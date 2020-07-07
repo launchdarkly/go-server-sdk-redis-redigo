@@ -67,9 +67,6 @@ func clearTestData(prefix string) error {
 		if err != nil {
 			return badResponse()
 		}
-		if cursor == 0 {
-			break
-		}
 		respLines := respValue.GetByIndex(1)
 		if respLines.Type() != ldvalue.ArrayType {
 			return badResponse()
@@ -82,6 +79,9 @@ func clearTestData(prefix string) error {
 		})
 		if failure != nil {
 			return failure
+		}
+		if cursor == 0 { // SCAN returns 0 when the current result subset is the last one
+			break
 		}
 	}
 	return client.Flush()
