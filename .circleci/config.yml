@@ -1,0 +1,110 @@
+version: 2.1
+
+orbs:
+  win: circleci/windows@1.0.0
+
+workflows:
+  workflow:
+    jobs:
+      - go-test:
+          name: Go 1.14
+          docker-image: cimg/go:1.14
+          with-coverage: true
+          run-lint: true
+      - go-test:
+          name: Go 1.13
+          docker-image: cimg/go:1.13
+      - go-test-windows:
+          name: Windows
+
+jobs:
+  go-test:
+    parameters:
+      docker-image:
+        type: string
+      run-lint:
+        type: boolean
+        default: false
+      with-coverage:
+        type: boolean
+        default: false
+  
+    docker:
+      - image: <<parameters.docker-image>>
+        environment:
+          CIRCLE_TEST_REPORTS: /tmp/circle-reports
+          CIRCLE_ARTIFACTS: /tmp/circle-artifacts
+      - image: redis
+
+    steps:
+      - checkout
+
+      - run:
+          name: install go-junit-report
+          command: go get -u github.com/jstemmer/go-junit-report
+
+      - when:
+          condition: <<parameters.run-lint>>
+          steps:
+            - run: make lint
+
+      - run:
+          name: Build
+          command: make
+
+      - run:
+          name: Run tests
+          command: |
+            mkdir -p $CIRCLE_TEST_REPORTS
+            mkdir -p $CIRCLE_ARTIFACTS
+            make test | tee $CIRCLE_ARTIFACTS/report.txt
+    
+      - when:
+          condition: <<parameters.with-coverage>>
+          steps:
+            - run:
+                name: Make coverage report
+                command: |
+                  make test-coverage || true
+            - run:
+                name: Store coverage results
+                command: cp build/coverage* /tmp/circle-artifacts
+                when: always
+    
+      - run:
+          name: Process test results
+          command: go-junit-report < $CIRCLE_ARTIFACTS/report.txt > $CIRCLE_TEST_REPORTS/junit.xml
+          when: always
+      
+      - store_test_results:
+          path: /tmp/circle-reports
+
+      - store_artifacts:
+          path: /tmp/circle-artifacts
+
+  go-test-windows:
+    executor:
+      name: win/vs2019
+      shell: powershell.exe
+
+    environment:
+      GOPATH: C:\Users\VssAdministrator\go
+
+    steps:
+      - checkout
+      - run: go version
+      - run:
+          name: setup Redis
+          command: |
+            $ProgressPreference = "SilentlyContinue"
+            iwr -outf redis.zip https://github.com/MicrosoftArchive/redis/releases/download/win-3.0.504/Redis-x64-3.0.504.zip
+            mkdir redis
+            Expand-Archive -Path redis.zip -DestinationPath redis
+            cd redis
+            ./redis-server --service-install
+            ./redis-server --service-start
+      - run:
+          name: build and test
+          command: |
+            cd ${env:GOPATH}\src\${env:PACKAGE_PATH}
+            go test -race ./...
