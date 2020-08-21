@@ -92,7 +92,7 @@ func (b *DataStoreBuilder) Pool(pool *r.Pool) *DataStoreBuilder {
 //
 //     import (
 //         redigo "github.com/garyburd/redigo/redis"
-//         ldredis "github.com/launchdarkly/go-server-sdk-redis"
+//         ldredis "github.com/launchdarkly/go-server-sdk-redis-redigo"
 //     )
 //     config.DataSource = ldcomponents.PersistentDataStore(
 //         ldredis.DataStore().DialOptions(redigo.DialPassword("verysecure123")),

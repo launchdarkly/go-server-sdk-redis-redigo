@@ -2,5 +2,5 @@ template:
   name: go
 
 publications:
-  - url: https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis
+  - url: https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo
     description: documentation

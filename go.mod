@@ -1,4 +1,4 @@
-module github.com/launchdarkly/go-server-sdk-redis
+module github.com/launchdarkly/go-server-sdk-redis-redigo
 
 go 1.13
 

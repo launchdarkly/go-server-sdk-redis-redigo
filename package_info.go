@@ -5,7 +5,7 @@
 //
 // To use the Redis data store with the LaunchDarkly client:
 //
-//     import ldredis "github.com/launchdarkly/go-server-sdk-redis"
+//     import ldredis "github.com/launchdarkly/go-server-sdk-redis-redigo"
 //
 //     config := ld.Config{
 //         DataStore: ldcomponents.PersistentDataStore(ldredis.DataStore()),
