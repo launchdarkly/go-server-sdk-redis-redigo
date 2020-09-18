@@ -49,7 +49,7 @@ func newRedisDataStoreImpl(
 	impl.loggers.SetPrefix("RedisDataStore:")
 
 	if impl.pool == nil {
-		impl.loggers.Infof("Using url: %s", builder.url)
+		impl.loggers.Infof("Using URL: %s", builder.url)
 		impl.pool = newPool(builder.url, builder.dialOptions)
 	}
 	return impl
@@ -61,11 +61,14 @@ func (store *redisDataStoreImpl) Init(allData []ldstoretypes.SerializedCollectio
 
 	_ = c.Send("MULTI")
 
+	totalCount := 0
+
 	for _, coll := range allData {
 		baseKey := store.featuresKey(coll.Kind)
 
 		_ = c.Send("DEL", baseKey)
 
+		totalCount += len(coll.Items)
 		for _, keyedItem := range coll.Items {
 			_ = c.Send("HSET", baseKey, keyedItem.Key, keyedItem.Item.SerializedItem)
 		}
@@ -74,6 +77,10 @@ func (store *redisDataStoreImpl) Init(allData []ldstoretypes.SerializedCollectio
 	_ = c.Send("SET", store.initedKey(), "")
 
 	_, err := c.Do("EXEC")
+
+	if err == nil {
+		store.loggers.Infof("Initialized with %d items", totalCount)
+	}
 
 	return err
 }
