@@ -118,7 +118,7 @@ func (b *DataStoreBuilder) DialOptions(options ...r.DialOption) *DataStoreBuilde
 	return b
 }
 
-// CreatePersistentDataStore is called internally by the SDK to create the data store implementation object.
+// CreatePersistentDataStore is called internally by the SDK to create a data store implementation object.
 func (b *DataStoreBuilder) CreatePersistentDataStore(
 	context interfaces.ClientContext,
 ) (interfaces.PersistentDataStore, error) {
@@ -126,6 +126,7 @@ func (b *DataStoreBuilder) CreatePersistentDataStore(
 	return store, nil
 }
 
+// CreateUnboundedSegmentStore is called internally by the SDK to create a data store implementation object.
 func (b *DataStoreBuilder) CreateUnboundedSegmentStore(
 	context interfaces.ClientContext,
 ) (interfaces.UnboundedSegmentStore, error) {
@@ -133,7 +134,6 @@ func (b *DataStoreBuilder) CreateUnboundedSegmentStore(
 	return store, nil
 }
 
-// CreateUnboundedSegmentStore is called internally by
 // DescribeConfiguration is used internally by the SDK to inspect the configuration.
 func (b *DataStoreBuilder) DescribeConfiguration() ldvalue.Value {
 	return ldvalue.String("Redis")
