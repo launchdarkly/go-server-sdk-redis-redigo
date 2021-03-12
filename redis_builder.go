@@ -21,6 +21,20 @@ const (
 )
 
 // DataStore returns a configurable builder for a Redis-backed data store.
+//
+// This can be used either for the main data store that holds feature flag data, or for the unbounded
+// segment store, or both. If you are using both, they do not have to have the same parameters. For
+// instance, in this example the main data store uses a Redis host called "host1" and the unbounded
+// segment store uses a Redis host called "host2":
+//
+//     config.DataStore = ldcomponents.PersistentDataStore(
+//         ldredis.DataStore().HostAndPort("host1", 6379))
+//     config.UnboundedSegments = ldcomponents.UnboundedSegments(
+//         ldredis.DataStore().HostAndPort("host2", 6379))
+//
+// Note that the builder is passed to one of two methods, PersistentDataStore or UnboundedSegments,
+// depending on the context in which it is being used. This is because each of those contexts has
+// its own additional configuration options that are unrelated to the Redis options.
 func DataStore() *DataStoreBuilder {
 	return &DataStoreBuilder{
 		prefix: DefaultPrefix,
@@ -36,7 +50,8 @@ func DataStore() *DataStoreBuilder {
 //
 // Builder calls can be chained, for example:
 //
-//     config.DataStore = ldredis.DataStore().URL("redis://hostname").Prefix("prefix")
+//     config.DataStore = ldcomponents.PersistentDataStore(
+//         ldredis.DataStore().URL("redis://hostname").Prefix("prefix"))
 //
 // You do not need to call the builder's CreatePersistentDataStore() method yourself to build the
 // actual data store; that will be done by the SDK.
@@ -111,6 +126,14 @@ func (b *DataStoreBuilder) CreatePersistentDataStore(
 	return store, nil
 }
 
+func (b *DataStoreBuilder) CreateUnboundedSegmentStore(
+	context interfaces.ClientContext,
+) (interfaces.UnboundedSegmentStore, error) {
+	store := newRedisUnboundedSegmentStoreImpl(b, context.GetLogging().GetLoggers())
+	return store, nil
+}
+
+// CreateUnboundedSegmentStore is called internally by
 // DescribeConfiguration is used internally by the SDK to inspect the configuration.
 func (b *DataStoreBuilder) DescribeConfiguration() ldvalue.Value {
 	return ldvalue.String("Redis")
