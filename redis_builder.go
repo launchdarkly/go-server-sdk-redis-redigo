@@ -42,7 +42,7 @@ func DataStore() *DataStoreBuilder {
 // actual data store; that will be done by the SDK.
 type DataStoreBuilder struct {
 	prefix      string
-	pool        *r.Pool
+	pool        Pool
 	url         string
 	dialOptions []r.DialOption
 }
@@ -114,4 +114,15 @@ func (b *DataStoreBuilder) CreatePersistentDataStore(
 // DescribeConfiguration is used internally by the SDK to inspect the configuration.
 func (b *DataStoreBuilder) DescribeConfiguration() ldvalue.Value {
 	return ldvalue.String("Redis")
+}
+
+// Pool maintains a pool of connections. The application calls the Get method to
+// get a connection from the pool and the connection's Close method to return
+// the connection's resources to the pool.
+//
+// It's available as an interface so the caller can easily add wrappers around
+// Redis layers.
+type Pool interface {
+	Get() r.Conn
+	Close() error
 }
