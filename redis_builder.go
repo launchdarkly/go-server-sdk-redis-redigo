@@ -87,6 +87,14 @@ func (b *DataStoreBuilder) Pool(pool *r.Pool) *DataStoreBuilder {
 	return b
 }
 
+// PoolInterface works on the same way as Pool, but allows injecting an
+// interface that represents the Redis pool. This is useful to wrap Redis
+// connections, adding custom behaviours.
+func (b *DataStoreBuilder) PoolInterface(pool Pool) *DataStoreBuilder {
+	b.pool = pool
+	return b
+}
+
 // DialOptions specifies any of the advanced Redis connection options supported by Redigo, such as
 // DialPassword.
 //
