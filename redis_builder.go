@@ -42,7 +42,7 @@ func DataStore() *DataStoreBuilder {
 // actual data store; that will be done by the SDK.
 type DataStoreBuilder struct {
 	prefix      string
-	pool        *r.Pool
+	pool        Pool
 	url         string
 	dialOptions []r.DialOption
 }
@@ -87,6 +87,14 @@ func (b *DataStoreBuilder) Pool(pool *r.Pool) *DataStoreBuilder {
 	return b
 }
 
+// PoolInterface works on the same way as Pool, but allows injecting an
+// interface that represents the Redis pool. This is useful to wrap Redis
+// connections, adding custom behaviours.
+func (b *DataStoreBuilder) PoolInterface(pool Pool) *DataStoreBuilder {
+	b.pool = pool
+	return b
+}
+
 // DialOptions specifies any of the advanced Redis connection options supported by Redigo, such as
 // DialPassword.
 //
@@ -114,4 +122,15 @@ func (b *DataStoreBuilder) CreatePersistentDataStore(
 // DescribeConfiguration is used internally by the SDK to inspect the configuration.
 func (b *DataStoreBuilder) DescribeConfiguration() ldvalue.Value {
 	return ldvalue.String("Redis")
+}
+
+// Pool maintains a pool of connections. The application calls the Get method to
+// get a connection from the pool and the connection's Close method to return
+// the connection's resources to the pool.
+//
+// It's available as an interface so the caller can easily add wrappers around
+// Redis layers.
+type Pool interface {
+	Get() r.Conn
+	Close() error
 }

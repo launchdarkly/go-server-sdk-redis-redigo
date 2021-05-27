@@ -12,7 +12,7 @@ import (
 // Internal implementation of the PersistentDataStore interface for Redis.
 type redisDataStoreImpl struct {
 	prefix     string
-	pool       *r.Pool
+	pool       Pool
 	loggers    ldlog.Loggers
 	testTxHook func()
 }
