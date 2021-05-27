@@ -14,7 +14,7 @@ We encourage pull requests and other contributions from the community. Before su
  
 ### Prerequisites
  
-The library should be built against Java 1.13 or higher. It is meant to be built as a module, although it can be used from non-module code.
+The library should be built against Go 1.14 or higher. It is meant to be built as a module, although it can be used from non-module code.
  
 ### Building
 
