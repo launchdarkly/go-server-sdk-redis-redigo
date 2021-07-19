@@ -15,7 +15,7 @@ import (
 // Internal implementation of the BigSegmentStore interface for Redis.
 type redisBigSegmentStoreImpl struct {
 	prefix  string
-	pool    *r.Pool
+	pool    Pool
 	loggers ldlog.Loggers
 }
 
