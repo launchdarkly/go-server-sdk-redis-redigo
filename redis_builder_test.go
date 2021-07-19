@@ -34,6 +34,12 @@ func TestDataSourceBuilder(t *testing.T) {
 		assert.Equal(t, p, b.pool)
 	})
 
+	t.Run("PoolInterface", func(t *testing.T) {
+		p := &myCustomPool{Pool: r.Pool{MaxActive: 999}}
+		b := DataStore().PoolInterface(p)
+		assert.Equal(t, p, b.pool)
+	})
+
 	t.Run("Prefix", func(t *testing.T) {
 		b := DataStore().Prefix("p")
 		assert.Equal(t, "p", b.prefix)
@@ -50,4 +56,22 @@ func TestDataSourceBuilder(t *testing.T) {
 		b.URL("")
 		assert.Equal(t, DefaultURL, b.url)
 	})
+}
+
+// myCustomPool is an example of a Redis pool wrapper.
+type myCustomPool struct {
+	r.Pool
+
+	getCount   int
+	closeCount int
+}
+
+func (m *myCustomPool) Get() r.Conn {
+	m.getCount++
+	return m.Pool.Get()
+}
+
+func (m *myCustomPool) Close() error {
+	m.closeCount++
+	return m.Pool.Close()
 }

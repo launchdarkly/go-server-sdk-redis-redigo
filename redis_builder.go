@@ -57,7 +57,7 @@ func DataStore() *DataStoreBuilder {
 // actual data store; that will be done by the SDK.
 type DataStoreBuilder struct {
 	prefix      string
-	pool        *r.Pool
+	pool        Pool
 	url         string
 	dialOptions []r.DialOption
 }
@@ -97,7 +97,16 @@ func (b *DataStoreBuilder) HostAndPort(host string, port int) *DataStoreBuilder 
 //
 // If you only need to change basic connection options such as providing a password, it is
 // simpler to use DialOptions().
+//
+// Use PoolInterface() if you want to provide your own implementation of a connection pool.
 func (b *DataStoreBuilder) Pool(pool *r.Pool) *DataStoreBuilder {
+	b.pool = pool
+	return b
+}
+
+// PoolInterface is equivalent to Pool, but uses an interface type rather than a concrete
+// implementation type. This allows implementation of custom behaviors for connection management.
+func (b *DataStoreBuilder) PoolInterface(pool Pool) *DataStoreBuilder {
 	b.pool = pool
 	return b
 }
@@ -137,4 +146,21 @@ func (b *DataStoreBuilder) CreateBigSegmentStore(
 // DescribeConfiguration is used internally by the SDK to inspect the configuration.
 func (b *DataStoreBuilder) DescribeConfiguration() ldvalue.Value {
 	return ldvalue.String("Redis")
+}
+
+// Pool is an interface representing a Redis connection pool.
+//
+// The methods of this interface are the same as the basic methods of the Pool type in
+// the Redigo client. Any type implementing the interface can be passed to
+// DataStoreBuilder.PoolInterface() to provide custom connection behavior.
+type Pool interface {
+	// Get obtains a Redis connection.
+	//
+	// See: https://pkg.go.dev/github.com/gomodule/redigo/redis#Pool.Get
+	Get() r.Conn
+
+	// Close releases the resources used by the pool.
+	//
+	// See: https://pkg.go.dev/github.com/gomodule/redigo/redis#Pool.Close
+	Close() error
 }
