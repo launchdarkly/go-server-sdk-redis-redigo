@@ -5,6 +5,8 @@ jobs:
       image: golang:1.14-buster
     template:
       name: go
+      skip:
+        - test  # CI tests require a database
 
 publications:
   - url: https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo
