@@ -31,7 +31,7 @@ func newRedisBigSegmentStoreImpl(
 	impl.loggers.SetPrefix("RedisBigSegmentStore:")
 
 	if impl.pool == nil {
-		impl.loggers.Infof("Using URL: %s", builder.url)
+		logRedisURL(loggers, builder.url)
 		impl.pool = newPool(builder.url, builder.dialOptions)
 	}
 	return impl

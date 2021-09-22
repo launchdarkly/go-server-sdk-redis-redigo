@@ -1,6 +1,7 @@
 package ldredis
 
 import (
+	"net/url"
 	"time"
 
 	r "github.com/gomodule/redigo/redis"
@@ -49,10 +50,18 @@ func newRedisDataStoreImpl(
 	impl.loggers.SetPrefix("RedisDataStore:")
 
 	if impl.pool == nil {
-		impl.loggers.Infof("Using URL: %s", builder.url)
+		logRedisURL(loggers, builder.url)
 		impl.pool = newPool(builder.url, builder.dialOptions)
 	}
 	return impl
+}
+
+func logRedisURL(loggers ldlog.Loggers, redisURL string) {
+	if parsed, err := url.Parse(redisURL); err == nil {
+		loggers.Infof("Using URL: %s", parsed.Redacted())
+	} else {
+		loggers.Errorf("Invalid Redis URL: %s", redisURL) // we can assume that the Redis client will also fail
+	}
 }
 
 func (store *redisDataStoreImpl) Init(allData []ldstoretypes.SerializedCollection) error {
