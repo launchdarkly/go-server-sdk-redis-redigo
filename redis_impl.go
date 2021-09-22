@@ -1,6 +1,7 @@
 package ldredis
 
 import (
+	"net/url"
 	"time"
 
 	r "github.com/gomodule/redigo/redis"
@@ -49,10 +50,30 @@ func newRedisDataStoreImpl(
 	impl.loggers.SetPrefix("RedisDataStore:")
 
 	if impl.pool == nil {
-		impl.loggers.Infof("Using URL: %s", builder.url)
+		logRedisURL(loggers, builder.url)
 		impl.pool = newPool(builder.url, builder.dialOptions)
 	}
 	return impl
+}
+
+func logRedisURL(loggers ldlog.Loggers, redisURL string) {
+	if parsed, err := url.Parse(redisURL); err == nil {
+		loggers.Infof("Using URL: %s", urlToRedactedString(parsed))
+	} else {
+		loggers.Errorf("Invalid Redis URL: %s", redisURL) // we can assume that the Redis client will also fail
+	}
+}
+
+// Equivalent to URL.Redacted() in Go 1.15+; currently we still support Go 1.14
+func urlToRedactedString(parsed *url.URL) string {
+	if parsed != nil && parsed.User != nil {
+		if _, hasPW := parsed.User.Password(); hasPW {
+			transformed := *parsed
+			transformed.User = url.UserPassword(parsed.User.Username(), "xxxxx")
+			return transformed.String()
+		}
+	}
+	return parsed.String()
 }
 
 func (store *redisDataStoreImpl) Init(allData []ldstoretypes.SerializedCollection) error {
