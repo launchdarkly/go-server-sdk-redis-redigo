@@ -4,7 +4,7 @@
 
 This library provides a [Redis](https://redis.io/)-backed persistence mechanism (data store) for the [LaunchDarkly Go SDK](https://github.com/launchdarkly/go-server-sdk), replacing the default in-memory data store.
 
-The Redis API implementation it uses is [Redigo](github.com/gomodule/redigo). There are other Redis client implementations for Go; if LaunchDarkly SDK Redis integrations using other Redis clients are released, they will be in separate repositories.
+The Redis API implementation it uses is [Redigo](https://github.com/gomodule/redigo). There are other Redis client implementations for Go; if LaunchDarkly SDK Redis integrations using other Redis clients are released, they will be in separate repositories.
 
 This version of the library requires at least version 5.0.0 of the LaunchDarkly Go SDK. In earlier Go SDK versions, the `ldredis` package was built into the SDK (`gopkg.in/launchdarkly/go-server-sdk.v4/ldredis`).
 
