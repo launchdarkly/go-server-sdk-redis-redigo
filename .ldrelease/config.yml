@@ -2,12 +2,16 @@ version: 2
 
 jobs:
   - docker:
-      image: golang:1.14-buster
+      image: golang:1.16-buster
     template:
       name: go
       skip:
         - test  # CI tests require a database
 
+branches:
+  - name: v2
+  - name: v1
+
 publications:
-  - url: https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo
+  - url: https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo/v2
     description: documentation

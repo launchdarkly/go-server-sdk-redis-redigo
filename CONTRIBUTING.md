@@ -13,9 +13,9 @@ We encourage pull requests and other contributions from the community. Before su
 ## Build instructions
  
 ### Prerequisites
- 
-The library should be built against Go 1.14 or higher. It is meant to be built as a module, although it can be used from non-module code.
- 
+
+This project should be built against the lowest supported Go version as described in [README.md](./README.md).
+
 ### Building
 
 To build the library without running any tests:

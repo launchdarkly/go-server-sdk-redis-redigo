@@ -58,22 +58,10 @@ func newRedisDataStoreImpl(
 
 func logRedisURL(loggers ldlog.Loggers, redisURL string) {
 	if parsed, err := url.Parse(redisURL); err == nil {
-		loggers.Infof("Using URL: %s", urlToRedactedString(parsed))
+		loggers.Infof("Using URL: %s", parsed.Redacted())
 	} else {
 		loggers.Errorf("Invalid Redis URL: %s", redisURL) // we can assume that the Redis client will also fail
 	}
-}
-
-// Equivalent to URL.Redacted() in Go 1.15+; currently we still support Go 1.14
-func urlToRedactedString(parsed *url.URL) string {
-	if parsed != nil && parsed.User != nil {
-		if _, hasPW := parsed.User.Password(); hasPW {
-			transformed := *parsed
-			transformed.User = url.UserPassword(parsed.User.Username(), "xxxxx")
-			return transformed.String()
-		}
-	}
-	return parsed.String()
 }
 
 func (store *redisDataStoreImpl) Init(allData []ldstoretypes.SerializedCollection) error {

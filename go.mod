@@ -1,6 +1,6 @@
-module github.com/launchdarkly/go-server-sdk-redis-redigo
+module github.com/launchdarkly/go-server-sdk-redis-redigo/v2
 
-go 1.13
+go 1.16
 
 require (
 	github.com/gomodule/redigo v1.8.2
