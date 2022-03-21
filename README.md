@@ -6,7 +6,7 @@ This library provides a [Redis](https://redis.io/)-backed persistence mechanism 
 
 The Redis API implementation it uses is [Redigo](https://github.com/gomodule/redigo). There are other Redis client implementations for Go; if LaunchDarkly SDK Redis integrations using other Redis clients are released, they will be in separate repositories.
 
-This version of the library requires at least version 5.0.0 of the LaunchDarkly Go SDK. In earlier Go SDK versions, the `ldredis` package was built into the SDK (`gopkg.in/launchdarkly/go-server-sdk.v4/ldredis`).
+This version of the library requires at least version 6.0.0 of the LaunchDarkly Go SDK. In earlier Go SDK versions, the `ldredis` package was built into the SDK (`gopkg.in/launchdarkly/go-server-sdk.v4/ldredis`).
 
 The minimum Go version is 1.16.
 
@@ -20,8 +20,8 @@ This assumes that you have already installed the LaunchDarkly Go SDK.
 
 ```go
 import (
-    ld "gopkg.in/launchdarkly/go-server-sdk.v5"
-    "gopkg.in/launchdarkly/go-server-sdk.v5/ldcomponents"
+    ld "github.com/launchdarkly/go-server-sdk/v6"
+    "github.com/launchdarkly/go-server-sdk/v6/ldcomponents"
     ldredis "github.com/launchdarkly/go-server-sdk-redis-redigo/v2"
 )
 ```

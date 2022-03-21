@@ -6,10 +6,10 @@ import (
 
 	r "github.com/gomodule/redigo/redis"
 
-	"gopkg.in/launchdarkly/go-sdk-common.v2/ldlog"
-	"gopkg.in/launchdarkly/go-sdk-common.v2/ldtime"
-	"gopkg.in/launchdarkly/go-server-sdk.v5/interfaces"
-	"gopkg.in/launchdarkly/go-server-sdk.v5/ldcomponents/ldstoreimpl"
+	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
+	"github.com/launchdarkly/go-sdk-common/v3/ldtime"
+	"github.com/launchdarkly/go-server-sdk/v6/interfaces"
+	"github.com/launchdarkly/go-server-sdk/v6/ldcomponents/ldstoreimpl"
 )
 
 // Internal implementation of the BigSegmentStore interface for Redis.
@@ -55,17 +55,17 @@ func (store *redisBigSegmentStoreImpl) GetMetadata() (interfaces.BigSegmentStore
 	}, nil
 }
 
-func (store *redisBigSegmentStoreImpl) GetUserMembership(
-	userHashKey string,
+func (store *redisBigSegmentStoreImpl) GetMembership(
+	contextHashKey string,
 ) (interfaces.BigSegmentMembership, error) {
 	c := store.getConn()
 	defer c.Close() //nolint:errcheck
 
-	includedRefs, err := r.Strings(c.Do("SMEMBERS", bigSegmentsIncludeKey(store.prefix, userHashKey)))
+	includedRefs, err := r.Strings(c.Do("SMEMBERS", bigSegmentsIncludeKey(store.prefix, contextHashKey)))
 	if err != nil {
 		return nil, err
 	}
-	excludedRefs, err := r.Strings(c.Do("SMEMBERS", bigSegmentsExcludeKey(store.prefix, userHashKey)))
+	excludedRefs, err := r.Strings(c.Do("SMEMBERS", bigSegmentsExcludeKey(store.prefix, contextHashKey)))
 	if err != nil {
 		return nil, err
 	}
@@ -85,10 +85,10 @@ func bigSegmentsSyncTimeKey(prefix string) string {
 	return fmt.Sprintf("%s:big_segments_synchronized_on", prefix)
 }
 
-func bigSegmentsIncludeKey(prefix, userHashKey string) string {
-	return fmt.Sprintf("%s:big_segment_include:%s", prefix, userHashKey)
+func bigSegmentsIncludeKey(prefix, contextHashKey string) string {
+	return fmt.Sprintf("%s:big_segment_include:%s", prefix, contextHashKey)
 }
 
-func bigSegmentsExcludeKey(prefix, userHashKey string) string {
-	return fmt.Sprintf("%s:big_segment_exclude:%s", prefix, userHashKey)
+func bigSegmentsExcludeKey(prefix, contextHashKey string) string {
+	return fmt.Sprintf("%s:big_segment_exclude:%s", prefix, contextHashKey)
 }
