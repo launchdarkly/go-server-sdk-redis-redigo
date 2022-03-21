@@ -20,8 +20,8 @@ This assumes that you have already installed the LaunchDarkly Go SDK.
 
 ```go
 import (
-    ld "gopkg.in/launchdarkly/go-server-sdk.v5"
-    "gopkg.in/launchdarkly/go-server-sdk.v5/ldcomponents"
+    ld "github.com/launchdarkly/go-server-sdk/v6"
+    "github.com/launchdarkly/go-server-sdk/v6/ldcomponents"
     ldredis "github.com/launchdarkly/go-server-sdk-redis-redigo/v2"
 )
 ```

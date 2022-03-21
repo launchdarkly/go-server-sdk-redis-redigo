@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"gopkg.in/launchdarkly/go-server-sdk.v5/interfaces"
-	"gopkg.in/launchdarkly/go-server-sdk.v5/testhelpers/storetest"
+	"github.com/launchdarkly/go-server-sdk/v6/interfaces"
+	"github.com/launchdarkly/go-server-sdk/v6/testhelpers/storetest"
 
 	r "github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/require"
@@ -24,18 +24,18 @@ func TestBigSegmentStore(t *testing.T) {
 		return err
 	}
 
-	setTestSegments := func(prefix string, userHashKey string, included []string, excluded []string) error {
+	setTestSegments := func(prefix string, contextHashKey string, included []string, excluded []string) error {
 		if prefix == "" {
 			prefix = DefaultPrefix
 		}
 		for _, inc := range included {
-			_, err := client.Do("SADD", bigSegmentsIncludeKey(prefix, userHashKey), inc)
+			_, err := client.Do("SADD", bigSegmentsIncludeKey(prefix, contextHashKey), inc)
 			if err != nil {
 				return err
 			}
 		}
 		for _, exc := range excluded {
-			_, err := client.Do("SADD", bigSegmentsExcludeKey(prefix, userHashKey), exc)
+			_, err := client.Do("SADD", bigSegmentsExcludeKey(prefix, contextHashKey), exc)
 			if err != nil {
 				return err
 			}
