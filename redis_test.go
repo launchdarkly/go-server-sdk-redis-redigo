@@ -72,11 +72,14 @@ func clearTestData(prefix string) error {
 			return badResponse()
 		}
 		var failure error
-		respLines.Enumerate(func(i int, key string, value ldvalue.Value) bool {
+		for i := 0; i < respLines.Count(); i++ {
+			value := respLines.GetByIndex(i)
 			redisKey := strings.TrimPrefix(strings.TrimSuffix(value.String(), `"`), `"`)
 			failure = client.Send("DEL", redisKey)
-			return failure == nil
-		})
+			if failure != nil {
+				break
+			}
+		}
 		if failure != nil {
 			return failure
 		}

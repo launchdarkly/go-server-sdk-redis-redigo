@@ -131,7 +131,7 @@ func (b *DataStoreBuilder) DialOptions(options ...r.DialOption) *DataStoreBuilde
 func (b *DataStoreBuilder) CreatePersistentDataStore(
 	context interfaces.ClientContext,
 ) (interfaces.PersistentDataStore, error) {
-	store := newRedisDataStoreImpl(b, context.GetLogging().GetLoggers())
+	store := newRedisDataStoreImpl(b, context.GetLogging().Loggers)
 	return store, nil
 }
 
@@ -139,7 +139,7 @@ func (b *DataStoreBuilder) CreatePersistentDataStore(
 func (b *DataStoreBuilder) CreateBigSegmentStore(
 	context interfaces.ClientContext,
 ) (interfaces.BigSegmentStore, error) {
-	store := newRedisBigSegmentStoreImpl(b, context.GetLogging().GetLoggers())
+	store := newRedisBigSegmentStoreImpl(b, context.GetLogging().Loggers)
 	return store, nil
 }
 
