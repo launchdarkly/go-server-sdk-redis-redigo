@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/launchdarkly/go-server-sdk/v6/interfaces"
+	"github.com/launchdarkly/go-server-sdk/v6/subsystems"
 	"github.com/launchdarkly/go-server-sdk/v6/testhelpers/storetest"
 
 	r "github.com/gomodule/redigo/redis"
@@ -16,7 +16,7 @@ func TestBigSegmentStore(t *testing.T) {
 	require.NoError(t, err)
 	defer client.Close()
 
-	setTestMetadata := func(prefix string, metadata interfaces.BigSegmentStoreMetadata) error {
+	setTestMetadata := func(prefix string, metadata subsystems.BigSegmentStoreMetadata) error {
 		if prefix == "" {
 			prefix = DefaultPrefix
 		}
@@ -44,7 +44,7 @@ func TestBigSegmentStore(t *testing.T) {
 	}
 
 	storetest.NewBigSegmentStoreTestSuite(
-		func(prefix string) interfaces.BigSegmentStoreFactory {
+		func(prefix string) subsystems.BigSegmentStoreFactory {
 			return DataStore().Prefix(prefix)
 		},
 		clearTestData,

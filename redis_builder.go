@@ -6,7 +6,7 @@ import (
 	r "github.com/gomodule/redigo/redis"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-	"github.com/launchdarkly/go-server-sdk/v6/interfaces"
+	"github.com/launchdarkly/go-server-sdk/v6/subsystems"
 )
 
 const (
@@ -129,16 +129,16 @@ func (b *DataStoreBuilder) DialOptions(options ...r.DialOption) *DataStoreBuilde
 
 // CreatePersistentDataStore is called internally by the SDK to create a data store implementation object.
 func (b *DataStoreBuilder) CreatePersistentDataStore(
-	context interfaces.ClientContext,
-) (interfaces.PersistentDataStore, error) {
+	context subsystems.ClientContext,
+) (subsystems.PersistentDataStore, error) {
 	store := newRedisDataStoreImpl(b, context.GetLogging().Loggers)
 	return store, nil
 }
 
 // CreateBigSegmentStore is called internally by the SDK to create a data store implementation object.
 func (b *DataStoreBuilder) CreateBigSegmentStore(
-	context interfaces.ClientContext,
-) (interfaces.BigSegmentStore, error) {
+	context subsystems.ClientContext,
+) (subsystems.BigSegmentStore, error) {
 	store := newRedisBigSegmentStoreImpl(b, context.GetLogging().Loggers)
 	return store, nil
 }

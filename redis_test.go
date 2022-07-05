@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-	"github.com/launchdarkly/go-server-sdk/v6/interfaces"
+	"github.com/launchdarkly/go-server-sdk/v6/subsystems"
 	"github.com/launchdarkly/go-server-sdk/v6/testhelpers/storetest"
 )
 
@@ -23,11 +23,11 @@ func TestRedisDataStore(t *testing.T) {
 		Run(t)
 }
 
-func makeTestStore(prefix string) interfaces.PersistentDataStoreFactory {
+func makeTestStore(prefix string) subsystems.PersistentDataStoreFactory {
 	return DataStore().Prefix(prefix)
 }
 
-func makeFailedStore() interfaces.PersistentDataStoreFactory {
+func makeFailedStore() subsystems.PersistentDataStoreFactory {
 	// Here we ensure that all Redis operations will fail by using an invalid hostname.
 	return DataStore().URL("redis://not-a-real-host")
 }
@@ -90,7 +90,7 @@ func clearTestData(prefix string) error {
 	return client.Flush()
 }
 
-func setConcurrentModificationHook(store interfaces.PersistentDataStore, hook func()) {
+func setConcurrentModificationHook(store subsystems.PersistentDataStore, hook func()) {
 	store.(*redisDataStoreImpl).testTxHook = hook
 }
 

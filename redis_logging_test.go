@@ -5,8 +5,7 @@ import (
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlogtest"
-	"github.com/launchdarkly/go-server-sdk/v6/ldcomponents"
-	"github.com/launchdarkly/go-server-sdk/v6/testhelpers"
+	"github.com/launchdarkly/go-server-sdk/v6/subsystems"
 
 	"github.com/stretchr/testify/require"
 )
@@ -16,10 +15,9 @@ func doStartupLoggingTest(t *testing.T, url string, expectedLogURL string) {
 	mockLog2 := ldlogtest.NewMockLog()
 	defer mockLog1.DumpIfTestFailed(t)
 	defer mockLog2.DumpIfTestFailed(t)
-	context1 := testhelpers.NewSimpleClientContext("sdk-key").
-		WithLogging(ldcomponents.Logging().Loggers(mockLog1.Loggers))
-	context2 := testhelpers.NewSimpleClientContext("sdk-key").
-		WithLogging(ldcomponents.Logging().Loggers(mockLog2.Loggers))
+	var context1, context2 subsystems.BasicClientContext
+	context1.Logging.Loggers = mockLog1.Loggers
+	context2.Logging.Loggers = mockLog2.Loggers
 
 	store1, err := DataStore().URL(url).CreatePersistentDataStore(context1)
 	require.NoError(t, err)

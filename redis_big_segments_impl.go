@@ -8,8 +8,8 @@ import (
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"github.com/launchdarkly/go-sdk-common/v3/ldtime"
-	"github.com/launchdarkly/go-server-sdk/v6/interfaces"
-	"github.com/launchdarkly/go-server-sdk/v6/ldcomponents/ldstoreimpl"
+	"github.com/launchdarkly/go-server-sdk/v6/subsystems"
+	"github.com/launchdarkly/go-server-sdk/v6/subsystems/ldstoreimpl"
 )
 
 // Internal implementation of the BigSegmentStore interface for Redis.
@@ -37,27 +37,27 @@ func newRedisBigSegmentStoreImpl(
 	return impl
 }
 
-func (store *redisBigSegmentStoreImpl) GetMetadata() (interfaces.BigSegmentStoreMetadata, error) {
+func (store *redisBigSegmentStoreImpl) GetMetadata() (subsystems.BigSegmentStoreMetadata, error) {
 	c := store.getConn()
 	defer c.Close() //nolint:errcheck
 
 	valueStr, err := r.String(c.Do("GET", bigSegmentsSyncTimeKey(store.prefix)))
 	if err != nil {
-		return interfaces.BigSegmentStoreMetadata{}, err
+		return subsystems.BigSegmentStoreMetadata{}, err
 	}
 	value, err := strconv.ParseUint(valueStr, 10, 64)
 	if err != nil {
-		return interfaces.BigSegmentStoreMetadata{}, err
+		return subsystems.BigSegmentStoreMetadata{}, err
 	}
 
-	return interfaces.BigSegmentStoreMetadata{
+	return subsystems.BigSegmentStoreMetadata{
 		LastUpToDate: ldtime.UnixMillisecondTime(value),
 	}, nil
 }
 
 func (store *redisBigSegmentStoreImpl) GetMembership(
 	contextHashKey string,
-) (interfaces.BigSegmentMembership, error) {
+) (subsystems.BigSegmentMembership, error) {
 	c := store.getConn()
 	defer c.Close() //nolint:errcheck
 
