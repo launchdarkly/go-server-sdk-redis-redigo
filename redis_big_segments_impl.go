@@ -20,7 +20,7 @@ type redisBigSegmentStoreImpl struct {
 }
 
 func newRedisBigSegmentStoreImpl(
-	builder *DataStoreBuilder,
+	builder builderOptions,
 	loggers ldlog.Loggers,
 ) *redisBigSegmentStoreImpl {
 	impl := &redisBigSegmentStoreImpl{

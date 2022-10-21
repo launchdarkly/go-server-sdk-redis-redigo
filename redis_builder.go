@@ -20,42 +20,95 @@ const (
 	DefaultPrefix = "launchdarkly"
 )
 
-// DataStore returns a configurable builder for a Redis-backed data store.
+// DataStore returns a configurable builder for a Redis-backed persistent data store.
 //
-// This can be used either for the main data store that holds feature flag data, or for the big
-// segment store, or both. If you are using both, they do not have to have the same parameters. For
-// instance, in this example the main data store uses a Redis host called "host1" and the big
-// segment store uses a Redis host called "host2":
+// This is for the main data store that holds feature flag data. To configure a data store for
+// Big Segments, use [BigSegmentStore] instead.
 //
-//     config.DataStore = ldcomponents.PersistentDataStore(
-//         ldredis.DataStore().HostAndPort("host1", 6379))
-//     config.BigSegments = ldcomponents.BigSegments(
-//         ldredis.DataStore().HostAndPort("host2", 6379))
+// You can use methods of the builder to specify any non-default Redis options you may want,
+// before passing the builder to [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.PersistentDataStore].
+// In this example, the store is configured to use a Redis host called "host1":
 //
-// Note that the builder is passed to one of two methods, PersistentDataStore or BigSegments,
-// depending on the context in which it is being used. This is because each of those contexts has
-// its own additional configuration options that are unrelated to the Redis options.
-func DataStore() *DataStoreBuilder {
-	return &DataStoreBuilder{
-		prefix: DefaultPrefix,
-		url:    DefaultURL,
+//	config.DataStore = ldcomponents.PersistentDataStore(
+//		ldredis.DataStore().HostAndPort("host1", 6379))
+//
+// Note that the SDK also has its own options related to data storage that are configured
+// at a different level, because they are independent of what database is being used. For
+// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.PersistentDataStore]
+// has options for caching:
+//
+//	config.DataStore = ldcomponents.PersistentDataStore(
+//		ldredis.DataStore().HostAndPort("host1", 6379),
+//	).CacheSeconds(15)
+func DataStore() *StoreBuilder[subsystems.PersistentDataStore] {
+	return &StoreBuilder[subsystems.PersistentDataStore]{
+		builderOptions: builderOptions{
+			prefix: DefaultPrefix,
+			url:    DefaultURL,
+		},
+		factory: createPersistentDataStore,
 	}
 }
 
-// DataStoreBuilder is a builder for configuring the Redis-based persistent data store.
+// BigSegmentStore returns a configurable builder for a Redis-backed Big Segment store.
 //
-// Obtain an instance of this type by calling DataStore(). After calling its methods to specify any
-// desired custom settings, wrap it in a PersistentDataStoreBuilder by calling
-// ldcomponents.PersistentDataStore(), and then store this in the SDK configuration's DataStore field.
+// You can use methods of the builder to specify any non-default Redis options you may want,
+// before passing the builder to [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.BigSegments].
+// In this example, the store is configured to use a Redis host called "host2":
 //
-// Builder calls can be chained, for example:
+//	config.BigSegments = ldcomponents.BigSegments(
+//		ldredis.BigSegmentStore().HostAndPort("host2", 6379))
+//
+// Note that the SDK also has its own options related to Big Segments that are configured
+// at a different level, because they are independent of what database is being used. For
+// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.BigSegments]
+// has an option for the status polling interval:
+//
+//	config.BigSegments = ldcomponents.BigSegments(
+//		ldredis.BigSegmentStore().HostAndPort("host2", 6379),
+//	).StatusPollInterval(time.Second * 30)
+func BigSegmentStore() *StoreBuilder[subsystems.BigSegmentStore] {
+	return &StoreBuilder[subsystems.BigSegmentStore]{
+		builderOptions: builderOptions{
+			prefix: DefaultPrefix,
+			url:    DefaultURL,
+		},
+		factory: createBigSegmentStore,
+	}
+}
+
+// StoreBuilder is a builder for configuring the Redis-based persistent data store and/or Big
+// Segment store.
+//
+// Both [DataStore] and [BigSegmentStore] return instances of this type. You can use methods of the
+// builder to specify any ny non-default Redis options you may want, before passing the builder to
+// either [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.PersistentDataStore] or
+// [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.BigSegments] as appropriate. The two types
+// of stores are independent of each other; you do not need a Big Segment store if you are not using
+// the Big Segments feature, and you do not need to use the same database for both.
+//
+// In this example, the main data store uses a Redis host called "host1", and the Big Segment
+// store uses a Redis host called "host2":
 //
 //     config.DataStore = ldcomponents.PersistentDataStore(
-//         ldredis.DataStore().URL("redis://hostname").Prefix("prefix"))
+//         ldredis.DataStore().URL("redis://host1:6379")
+//     config.BigSegments = ldcomponents.BigSegments(
+//         ldredis.DataStore().URL("redis://host2:6379")
 //
-// You do not need to call the builder's CreatePersistentDataStore() method yourself to build the
-// actual data store; that will be done by the SDK.
-type DataStoreBuilder struct {
+// Note that the SDK also has its own options related to data storage that are configured
+// at a different level, because they are independent of what database is being used. For
+// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.PersistentDataStore]
+// has options for caching:
+//
+//	config.DataStore = ldcomponents.PersistentDataStore(
+//		ldredis.DataStore().HostAndPort("host1", 6379),
+//	).CacheSeconds(15)
+type StoreBuilder[T any] struct {
+	builderOptions builderOptions
+	factory        func(*StoreBuilder[T], subsystems.ClientContext) (T, error)
+}
+
+type builderOptions struct {
 	prefix      string
 	pool        Pool
 	url         string
@@ -64,11 +117,11 @@ type DataStoreBuilder struct {
 
 // Prefix specifies a string that should be prepended to all Redis keys used by the data store.
 // A colon will be added to this automatically. If this is unspecified or empty, DefaultPrefix will be used.
-func (b *DataStoreBuilder) Prefix(prefix string) *DataStoreBuilder {
+func (b *StoreBuilder[T]) Prefix(prefix string) *StoreBuilder[T] {
 	if prefix == "" {
 		prefix = DefaultPrefix
 	}
-	b.prefix = prefix
+	b.builderOptions.prefix = prefix
 	return b
 }
 
@@ -78,16 +131,16 @@ func (b *DataStoreBuilder) Prefix(prefix string) *DataStoreBuilder {
 // the redis:// syntax (https://www.iana.org/assignments/uri-schemes/prov/redis), which can include a
 // password and a database number, as well as rediss://
 // (https://www.iana.org/assignments/uri-schemes/prov/rediss), which enables TLS.
-func (b *DataStoreBuilder) URL(url string) *DataStoreBuilder {
+func (b *StoreBuilder[T]) URL(url string) *StoreBuilder[T] {
 	if url == "" {
 		url = DefaultURL
 	}
-	b.url = url
+	b.builderOptions.url = url
 	return b
 }
 
 // HostAndPort is a shortcut for specifying the Redis host address as a hostname and port.
-func (b *DataStoreBuilder) HostAndPort(host string, port int) *DataStoreBuilder {
+func (b *StoreBuilder[T]) HostAndPort(host string, port int) *StoreBuilder[T] {
 	return b.URL(fmt.Sprintf("redis://%s:%d", host, port))
 }
 
@@ -99,15 +152,15 @@ func (b *DataStoreBuilder) HostAndPort(host string, port int) *DataStoreBuilder 
 // simpler to use DialOptions().
 //
 // Use PoolInterface() if you want to provide your own implementation of a connection pool.
-func (b *DataStoreBuilder) Pool(pool *r.Pool) *DataStoreBuilder {
-	b.pool = pool
+func (b *StoreBuilder[T]) Pool(pool *r.Pool) *StoreBuilder[T] {
+	b.builderOptions.pool = pool
 	return b
 }
 
 // PoolInterface is equivalent to Pool, but uses an interface type rather than a concrete
 // implementation type. This allows implementation of custom behaviors for connection management.
-func (b *DataStoreBuilder) PoolInterface(pool Pool) *DataStoreBuilder {
-	b.pool = pool
+func (b *StoreBuilder[T]) PoolInterface(pool Pool) *StoreBuilder[T] {
+	b.builderOptions.pool = pool
 	return b
 }
 
@@ -122,29 +175,18 @@ func (b *DataStoreBuilder) PoolInterface(pool Pool) *DataStoreBuilder {
 //         ldredis.DataStore().DialOptions(redigo.DialPassword("verysecure123")),
 //     )
 // Note that some Redis client features can also be specified as part of the URL: see  URL().
-func (b *DataStoreBuilder) DialOptions(options ...r.DialOption) *DataStoreBuilder {
-	b.dialOptions = options
+func (b *StoreBuilder[T]) DialOptions(options ...r.DialOption) *StoreBuilder[T] {
+	b.builderOptions.dialOptions = options
 	return b
 }
 
-// CreatePersistentDataStore is called internally by the SDK to create a data store implementation object.
-func (b *DataStoreBuilder) CreatePersistentDataStore(
-	context subsystems.ClientContext,
-) (subsystems.PersistentDataStore, error) {
-	store := newRedisDataStoreImpl(b, context.GetLogging().Loggers)
-	return store, nil
-}
-
-// CreateBigSegmentStore is called internally by the SDK to create a data store implementation object.
-func (b *DataStoreBuilder) CreateBigSegmentStore(
-	context subsystems.ClientContext,
-) (subsystems.BigSegmentStore, error) {
-	store := newRedisBigSegmentStoreImpl(b, context.GetLogging().Loggers)
-	return store, nil
+// Build is called internally by the SDK.
+func (b *StoreBuilder[T]) Build(context subsystems.ClientContext) (T, error) {
+	return b.factory(b, context)
 }
 
 // DescribeConfiguration is used internally by the SDK to inspect the configuration.
-func (b *DataStoreBuilder) DescribeConfiguration() ldvalue.Value {
+func (b *StoreBuilder[T]) DescribeConfiguration() ldvalue.Value {
 	return ldvalue.String("Redis")
 }
 
@@ -163,4 +205,20 @@ type Pool interface {
 	//
 	// See: https://pkg.go.dev/github.com/gomodule/redigo/redis#Pool.Close
 	Close() error
+}
+
+func createPersistentDataStore(
+	builder *StoreBuilder[subsystems.PersistentDataStore],
+	clientContext subsystems.ClientContext,
+) (subsystems.PersistentDataStore, error) {
+	store := newRedisDataStoreImpl(builder.builderOptions, clientContext.GetLogging().Loggers)
+	return store, nil
+}
+
+func createBigSegmentStore(
+	builder *StoreBuilder[subsystems.BigSegmentStore],
+	clientContext subsystems.ClientContext,
+) (subsystems.BigSegmentStore, error) {
+	store := newRedisBigSegmentStoreImpl(builder.builderOptions, clientContext.GetLogging().Loggers)
+	return store, nil
 }

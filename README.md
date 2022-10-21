@@ -8,7 +8,7 @@ The Redis API implementation it uses is [Redigo](https://github.com/gomodule/red
 
 This version of the library requires at least version 6.0.0 of the LaunchDarkly Go SDK. In earlier Go SDK versions, the `ldredis` package was built into the SDK (`gopkg.in/launchdarkly/go-server-sdk.v4/ldredis`).
 
-The minimum Go version is 1.16.
+The minimum Go version is 1.18.
 
 For more information, see also: [Using a persistent feature store](https://docs.launchdarkly.com/v2.0/docs/using-a-persistent-feature-store).
 
