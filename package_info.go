@@ -14,7 +14,7 @@
 //
 // The default Redis pool configuration uses an address of localhost:6379, a maximum of 16
 // concurrent connections, and blocking connection requests. You may customize the configuration
-// by using the methods of the ldredis.DataStoreBuilder returned by ldredis.DataStore():
+// by using the methods of the [StoreBuilder] returned by [DataStore]:
 //
 //     config := ld.Config{
 //         DataStore: ldcomponents.PersistentDataStore(
@@ -22,13 +22,13 @@
 //         ).CacheSeconds(30),
 //     }
 //
-// Note that CacheSeconds() is not a method of ldredis.DataStoreBuilder, but rather a method of
+// Note that CacheSeconds() is not a method of [StoreBuilder], but rather a method of
 // ldcomponents.PersistentDataStore(), because the caching behavior is provided by the SDK for
 // all database integrations.
 //
-// For advanced customization of the underlying Redigo client, use the DialOptions or Pool
-// options with ldredis.DataStore(). Note that some Redis client features can also be
-// specified as part of the URL: Redigo supports the redis:// syntax
+// For advanced customization of the underlying Redigo client, use [StoreBuilder] methods such
+// as [StoreBuilder.DialOptions] and [StoreBuilder.Pool]. Note that some Redis client features
+// can also be specified as part of the URL: Redigo supports the redis:// syntax
 // (https://www.iana.org/assignments/uri-schemes/prov/redis), which can include a password
 // and a database number, as well as rediss:// (https://www.iana.org/assignments/uri-schemes/prov/rediss),
 // which enables TLS.

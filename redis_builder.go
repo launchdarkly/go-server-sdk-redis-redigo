@@ -10,13 +10,9 @@ import (
 )
 
 const (
-	// DefaultURL is the default URL for connecting to Redis, if you use
-	// NewRedisDataStoreWithDefaults. You can specify otherwise with the RedisURL option.
-	// If you are using the other constructors, you must specify the URL explicitly.
+	// DefaultURL is the default value for StoreBuilder.URL.
 	DefaultURL = "redis://localhost:6379"
-	// DefaultPrefix is a string that is prepended (along with a colon) to all Redis keys used
-	// by the data store. You can change this value with the Prefix() option for
-	// NewRedisDataStoreWithDefaults, or with the "prefix" parameter to the other constructors.
+	// DefaultPrefix is the default value for StoreBuilder.Prefix.
 	DefaultPrefix = "launchdarkly"
 )
 
@@ -116,7 +112,7 @@ type builderOptions struct {
 }
 
 // Prefix specifies a string that should be prepended to all Redis keys used by the data store.
-// A colon will be added to this automatically. If this is unspecified or empty, DefaultPrefix will be used.
+// A colon will be added to this automatically. If this is unspecified or empty, [DefaultPrefix] will be used.
 func (b *StoreBuilder[T]) Prefix(prefix string) *StoreBuilder[T] {
 	if prefix == "" {
 		prefix = DefaultPrefix
@@ -125,7 +121,7 @@ func (b *StoreBuilder[T]) Prefix(prefix string) *StoreBuilder[T] {
 	return b
 }
 
-// URL specifies the Redis host URL. If not specified, the default value is DefaultURL.
+// URL specifies the Redis host URL. If not specified, the default value is [DefaultURL].
 //
 // Note that some Redis client features can also be specified as part of the URL: Redigo supports
 // the redis:// syntax (https://www.iana.org/assignments/uri-schemes/prov/redis), which can include a
@@ -146,12 +142,12 @@ func (b *StoreBuilder[T]) HostAndPort(host string, port int) *StoreBuilder[T] {
 
 // Pool specifies that the data store should use a specific connection pool configuration. If not
 // specified, it will create a default configuration (see package description). Specifying this
-// option will cause any address specified with URL() or HostAndPort() to be ignored.
+// option will cause any address specified with URL or HostAndPort to be ignored.
 //
 // If you only need to change basic connection options such as providing a password, it is
-// simpler to use DialOptions().
+// simpler to use DialOptions.
 //
-// Use PoolInterface() if you want to provide your own implementation of a connection pool.
+// Use PoolInterface if you want to provide your own implementation of a connection pool.
 func (b *StoreBuilder[T]) Pool(pool *r.Pool) *StoreBuilder[T] {
 	b.builderOptions.pool = pool
 	return b
@@ -194,7 +190,7 @@ func (b *StoreBuilder[T]) DescribeConfiguration() ldvalue.Value {
 //
 // The methods of this interface are the same as the basic methods of the Pool type in
 // the Redigo client. Any type implementing the interface can be passed to
-// DataStoreBuilder.PoolInterface() to provide custom connection behavior.
+// StoreBuilder.PoolInterface to provide custom connection behavior.
 type Pool interface {
 	// Get obtains a Redis connection.
 	//
