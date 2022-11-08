@@ -44,8 +44,8 @@ func TestBigSegmentStore(t *testing.T) {
 	}
 
 	storetest.NewBigSegmentStoreTestSuite(
-		func(prefix string) subsystems.BigSegmentStoreFactory {
-			return DataStore().Prefix(prefix)
+		func(prefix string) subsystems.ComponentConfigurer[subsystems.BigSegmentStore] {
+			return BigSegmentStore().Prefix(prefix)
 		},
 		clearTestData,
 		setTestMetadata,

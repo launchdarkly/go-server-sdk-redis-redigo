@@ -23,11 +23,11 @@ func TestRedisDataStore(t *testing.T) {
 		Run(t)
 }
 
-func makeTestStore(prefix string) subsystems.PersistentDataStoreFactory {
+func makeTestStore(prefix string) subsystems.ComponentConfigurer[subsystems.PersistentDataStore] {
 	return DataStore().Prefix(prefix)
 }
 
-func makeFailedStore() subsystems.PersistentDataStoreFactory {
+func makeFailedStore() subsystems.ComponentConfigurer[subsystems.PersistentDataStore] {
 	// Here we ensure that all Redis operations will fail by using an invalid hostname.
 	return DataStore().URL("redis://not-a-real-host")
 }

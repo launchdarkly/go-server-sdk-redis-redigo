@@ -19,12 +19,12 @@ func doStartupLoggingTest(t *testing.T, url string, expectedLogURL string) {
 	context1.Logging.Loggers = mockLog1.Loggers
 	context2.Logging.Loggers = mockLog2.Loggers
 
-	store1, err := DataStore().URL(url).CreatePersistentDataStore(context1)
+	store1, err := DataStore().URL(url).Build(context1)
 	require.NoError(t, err)
 	_ = store1.Close()
 	mockLog1.AssertMessageMatch(t, true, ldlog.Info, "Using URL: "+expectedLogURL)
 
-	store2, err := DataStore().URL(url).CreateBigSegmentStore(context2)
+	store2, err := DataStore().URL(url).Build(context2)
 	require.NoError(t, err)
 	_ = store2.Close()
 	mockLog2.AssertMessageMatch(t, true, ldlog.Info, "Using URL: "+expectedLogURL)
