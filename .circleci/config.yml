@@ -7,18 +7,16 @@ workflows:
   workflow:
     jobs:
       - go-test:
+          name: Go 1.19
+          docker-image: cimg/go:1.19
+          with-coverage: true
+          run-lint: true
+      - go-test:
           name: Go 1.18
           docker-image: cimg/go:1.18
-      - go-test:
-          name: Go 1.17
-          docker-image: cimg/go:1.17
-          with-coverage: true
-          run-lint: true  # golangci-lint doesn't currently run in Go 1.18
-      - go-test:
-          name: Go 1.16
-          docker-image: cimg/go:1.16
       - go-test-windows:
           name: Windows
+          go-version: "1.18.5"
 
 jobs:
   go-test:
@@ -90,20 +88,24 @@ jobs:
       name: win/vs2019
       shell: powershell.exe
 
+    parameters:
+      go-version:
+        type: string
+
     environment:
       GOPATH: C:\Users\VssAdministrator\go
 
     steps:
       - checkout
-      - run: 
-          name: download Go 1.16.14
+      - run:
+          name: download Go <<parameters.go-version>>
           command: |
             $ErrorActionPreference = "Stop"
-            $installerUrl = "https://go.dev/dl/go1.16.14.windows-amd64.msi"
-            (New-Object System.Net.WebClient).DownloadFile($installerUrl, "go1.16.14.windows-amd64.msi")
+            $installerUrl = "https://go.dev/dl/go<<parameters.go-version>>.windows-amd64.msi"
+            (New-Object System.Net.WebClient).DownloadFile($installerUrl, "go<<parameters.go-version>>.windows-amd64.msi")
       - run:
-          name: install Go 1.16.14
-          command: Start-Process msiexec.exe -Wait -ArgumentList "/I go1.16.14.windows-amd64.msi /quiet"
+          name: install Go <<parameters.go-version>>
+          command: Start-Process msiexec.exe -Wait -ArgumentList "/I go<<parameters.go-version>>.windows-amd64.msi /quiet"
       - run: go version
       - run:
           name: setup Redis
