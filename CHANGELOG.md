@@ -2,6 +2,17 @@
 
 All notable changes to the LaunchDarkly Go SDK Redis integration will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [2.0.0] - 2022-12-07
+This release corresponds to the 6.0.0 release of the LaunchDarkly Go SDK. Any application code that is being updated to use the 6.0.0 SDK, and was using a 1.x version of `go-server-sdk-redis-redigo`, should now use a 2.x version instead.
+
+There are no functional differences in the behavior of the Redis integration; the differences are only related to changes in the usage of interface types for configuration in the SDK.
+
+### Added:
+- `BigSegmentStore()`, which creates a configuration builder for use with Big Segments. Previously, the `DataStore()` builder was used for both regular data stores and Big Segment stores.
+
+### Changed:
+- The type `RedisDataStoreBuilder` has been removed, replaced by a generic type `RedisStoreBuilder`. Application code would not normally need to reference these types by name, but if necessary, use either `RedisStoreBuilder[PersistentDataStore]` or `RedisStoreBuilder[BigSegmentStore]` depending on whether you are configuring a regular data store or a Big Segment store.
+
 ## [1.2.1] - 2021-09-22
 ### Changed:
 - When logging the Redis URL at startup, if the URL contains a password it is replaced by `xxxxx` (the same behavior as Go's `URL.Redacted()`).
