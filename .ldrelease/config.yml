@@ -8,6 +8,10 @@ jobs:
       skip:
         - test  # CI tests require a database
 
+branches:
+- name: main
+- name: 1.x
+
 publications:
   - url: https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo
     description: documentation
