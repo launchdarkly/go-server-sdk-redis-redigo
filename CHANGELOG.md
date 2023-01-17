@@ -2,6 +2,10 @@
 
 All notable changes to the LaunchDarkly Go SDK Redis integration will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [2.0.1] - 2023-01-17
+### Fixed:
+- When using Big Segments, do not log a database error if the Big Segments status data has not yet been populated.
+
 ## [1.2.2] - 2023-01-17
 ### Fixed:
 - When using Big Segments, do not log a database error if the Big Segments status data has not yet been populated.
