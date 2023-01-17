@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/gomodule/redigo v1.8.2
 	github.com/launchdarkly/go-sdk-common/v3 v3.0.0
-	github.com/launchdarkly/go-server-sdk/v6 v6.0.0
+	github.com/launchdarkly/go-server-sdk/v6 v6.0.1
 	github.com/stretchr/testify v1.7.0
 )
 
