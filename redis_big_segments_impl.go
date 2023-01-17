@@ -43,6 +43,10 @@ func (store *redisBigSegmentStoreImpl) GetMetadata() (interfaces.BigSegmentStore
 
 	valueStr, err := r.String(c.Do("GET", bigSegmentsSyncTimeKey(store.prefix)))
 	if err != nil {
+		if err == r.ErrNil {
+			// this is just a "not found" result, not a database error
+			err = nil
+		}
 		return interfaces.BigSegmentStoreMetadata{}, err
 	}
 	value, err := strconv.ParseUint(valueStr, 10, 64)
@@ -62,11 +66,11 @@ func (store *redisBigSegmentStoreImpl) GetUserMembership(
 	defer c.Close() //nolint:errcheck
 
 	includedRefs, err := r.Strings(c.Do("SMEMBERS", bigSegmentsIncludeKey(store.prefix, userHashKey)))
-	if err != nil {
+	if err != nil && err != r.ErrNil {
 		return nil, err
 	}
 	excludedRefs, err := r.Strings(c.Do("SMEMBERS", bigSegmentsExcludeKey(store.prefix, userHashKey)))
-	if err != nil {
+	if err != nil && err != r.ErrNil {
 		return nil, err
 	}
 
