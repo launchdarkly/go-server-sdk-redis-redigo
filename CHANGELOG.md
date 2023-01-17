@@ -2,6 +2,10 @@
 
 All notable changes to the LaunchDarkly Go SDK Redis integration will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [1.2.2] - 2023-01-17
+### Fixed:
+- When using Big Segments, do not log a database error if the Big Segments status data has not yet been populated.
+
 ## [1.2.1] - 2021-09-22
 ### Changed:
 - When logging the Redis URL at startup, if the URL contains a password it is replaced by `xxxxx` (the same behavior as Go's `URL.Redacted()`).
