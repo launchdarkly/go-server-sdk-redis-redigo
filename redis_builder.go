@@ -6,7 +6,7 @@ import (
 	r "github.com/gomodule/redigo/redis"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-	"github.com/launchdarkly/go-server-sdk/v6/subsystems"
+	"github.com/launchdarkly/go-server-sdk/v7/subsystems"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 // Big Segments, use [BigSegmentStore] instead.
 //
 // You can use methods of the builder to specify any non-default Redis options you may want,
-// before passing the builder to [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.PersistentDataStore].
+// before passing the builder to [github.com/launchdarkly/go-server-sdk/v7/ldcomponents.PersistentDataStore].
 // In this example, the store is configured to use a Redis host called "host1":
 //
 //	config.DataStore = ldcomponents.PersistentDataStore(
@@ -30,7 +30,7 @@ const (
 //
 // Note that the SDK also has its own options related to data storage that are configured
 // at a different level, because they are independent of what database is being used. For
-// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.PersistentDataStore]
+// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v7/ldcomponents.PersistentDataStore]
 // has options for caching:
 //
 //	config.DataStore = ldcomponents.PersistentDataStore(
@@ -49,7 +49,7 @@ func DataStore() *StoreBuilder[subsystems.PersistentDataStore] {
 // BigSegmentStore returns a configurable builder for a Redis-backed Big Segment store.
 //
 // You can use methods of the builder to specify any non-default Redis options you may want,
-// before passing the builder to [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.BigSegments].
+// before passing the builder to [github.com/launchdarkly/go-server-sdk/v7/ldcomponents.BigSegments].
 // In this example, the store is configured to use a Redis host called "host2":
 //
 //	config.BigSegments = ldcomponents.BigSegments(
@@ -57,7 +57,7 @@ func DataStore() *StoreBuilder[subsystems.PersistentDataStore] {
 //
 // Note that the SDK also has its own options related to Big Segments that are configured
 // at a different level, because they are independent of what database is being used. For
-// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.BigSegments]
+// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v7/ldcomponents.BigSegments]
 // has an option for the status polling interval:
 //
 //	config.BigSegments = ldcomponents.BigSegments(
@@ -78,8 +78,8 @@ func BigSegmentStore() *StoreBuilder[subsystems.BigSegmentStore] {
 //
 // Both [DataStore] and [BigSegmentStore] return instances of this type. You can use methods of the
 // builder to specify any ny non-default Redis options you may want, before passing the builder to
-// either [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.PersistentDataStore] or
-// [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.BigSegments] as appropriate. The two types
+// either [github.com/launchdarkly/go-server-sdk/v7/ldcomponents.PersistentDataStore] or
+// [github.com/launchdarkly/go-server-sdk/v7/ldcomponents.BigSegments] as appropriate. The two types
 // of stores are independent of each other; you do not need a Big Segment store if you are not using
 // the Big Segments feature, and you do not need to use the same database for both.
 //
@@ -93,7 +93,7 @@ func BigSegmentStore() *StoreBuilder[subsystems.BigSegmentStore] {
 //
 // Note that the SDK also has its own options related to data storage that are configured
 // at a different level, because they are independent of what database is being used. For
-// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v6/ldcomponents.PersistentDataStore]
+// instance, the builder returned by [github.com/launchdarkly/go-server-sdk/v7/ldcomponents.PersistentDataStore]
 // has options for caching:
 //
 //	config.DataStore = ldcomponents.PersistentDataStore(
