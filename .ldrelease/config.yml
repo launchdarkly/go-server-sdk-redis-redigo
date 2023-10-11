@@ -9,9 +9,10 @@ jobs:
         - test  # CI tests require a database
 
 branches:
+  - name: v3
   - name: main
   - name: 1.x
 
 publications:
-  - url: https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo/v2
+  - url: https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo/v3
     description: documentation
