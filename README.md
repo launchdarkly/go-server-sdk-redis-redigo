@@ -1,6 +1,7 @@
 # LaunchDarkly Server-side SDK for Go - Redis integration with Redigo client
 
-[![Circle CI](https://circleci.com/gh/launchdarkly/go-server-sdk-redis-redigo.svg?style=shield)](https://circleci.com/gh/launchdarkly/go-server-sdk-redis-redigo) [![Documentation](https://img.shields.io/static/v1?label=go.dev&message=reference&color=00add8)](https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo/v3)
+[![Actions Status](https://github.com/launchdarkly/go-server-sdk-redis-redigo/actions/workflows/ci.yml/badge.svg?branch=v3)](https://github.com/launchdarkly/go-server-sdk-redis-redigo/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/static/v1?label=go.dev&message=reference&color=00add8)](https://pkg.go.dev/github.com/launchdarkly/go-server-sdk-redis-redigo/v3)
 
 This library provides a [Redis](https://redis.io/)-backed persistence mechanism (data store) for the [LaunchDarkly Go SDK](https://github.com/launchdarkly/go-server-sdk), replacing the default in-memory data store.
 
