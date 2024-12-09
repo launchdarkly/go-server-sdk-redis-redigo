@@ -1,5 +1,5 @@
 name: Coverage
-description: "Runs Go Server SDK's code-coverage checker."
+description: "Runs the code-coverage checker."
 inputs:
   enforce:
     description: 'Whether to enforce coverage thresholds.'
