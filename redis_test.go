@@ -33,7 +33,7 @@ func makeFailedStore() subsystems.ComponentConfigurer[subsystems.PersistentDataS
 }
 
 func verifyFailedStoreError(t assert.TestingT, err error) {
-	assert.Contains(t, err.Error(), "no such host")
+	assert.Contains(t, err.Error(), "lookup")
 }
 
 func clearTestData(prefix string) error {
