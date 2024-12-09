@@ -40,14 +40,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
-      - name: download Go ${{ matrix.go-version }}
-        run: |
-          $ErrorActionPreference = "Stop"
-          $installerUrl = "https://go.dev/dl/go${{ matrix.go-version }}.windows-amd64.msi"
-          (New-Object System.Net.WebClient).DownloadFile($installerUrl, "go${{ matrix.go-version }}.windows-amd64.msi")
-      - name: install Go ${{ matrix.go-version }}
-        run: Start-Process msiexec.exe -Wait -ArgumentList "/I go${{ matrix.go-version }}.windows-amd64.msi /quiet"
-      - run: go version
       - name: setup Redis
         run: |
           $ProgressPreference = "SilentlyContinue"
