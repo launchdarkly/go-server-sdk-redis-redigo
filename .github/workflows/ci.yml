@@ -1,20 +1,20 @@
 name: Build and Test SDK
 on:
   push:
-    branches: [ 'v3', 'feat/**' ]
+    branches: ["v3", "feat/**"]
     paths-ignore:
-      - '**.md' # Don't run CI on markdown changes.
+      - "**.md" # Don't run CI on markdown changes.
   pull_request:
-    branches: [ 'v3', 'feat/**'  ]
+    branches: ["v3", "feat/**"]
     paths-ignore:
-      - '**.md'
+      - "**.md"
 
 jobs:
   go-versions:
     uses: ./.github/workflows/go-versions.yml
 
   # Runs the common tasks (unit tests, lint, contract tests) for each Go version.
-  test-linux:
+  test-linux-redis:
     name: ${{ format('Linux, Go {0}', matrix.go-version) }}
     needs: go-versions
     strategy:
@@ -22,9 +22,30 @@ jobs:
       fail-fast: false
       matrix:
         go-version: ${{ fromJSON(needs.go-versions.outputs.matrix) }}
-    uses: ./.github/workflows/common_ci.yml
-    with:
-      go-version: ${{ matrix.go-version }}
+    steps:
+      - uses: launchdarkly/gh-actions/actions/persistent-stores@mk/sdk-1684/valkey
+        with:
+          redis: true
+      - uses: ./.github/workflows/common_ci.yml
+        with:
+          go-version: ${{ matrix.go-version }}
+
+  test-linux-valkey:
+    name: ${{ format('Linux, Go {0}', matrix.go-version) }}
+    needs: go-versions
+    strategy:
+      # Let jobs fail independently, in case it's a single version that's broken.
+      fail-fast: false
+      matrix:
+        go-version: ${{ fromJSON(needs.go-versions.outputs.matrix) }}
+    steps:
+      - uses: launchdarkly/gh-actions/actions/persistent-stores@mk/sdk-1684/valkey
+        with:
+          valkey: true
+          valkey_port: 6379
+      - uses: ./.github/workflows/common_ci.yml
+        with:
+          go-version: ${{ matrix.go-version }}
 
   test-windows:
     name: ${{ format('Windows, Go {0}', matrix.go-version) }}
@@ -40,14 +61,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
-      - name: setup Redis
-        run: |
-          $ProgressPreference = "SilentlyContinue"
-          iwr -outf redis.zip https://github.com/MicrosoftArchive/redis/releases/download/win-3.0.504/Redis-x64-3.0.504.zip
-          mkdir redis
-          Expand-Archive -Path redis.zip -DestinationPath redis
-          cd redis
-          ./redis-server --service-install
-          ./redis-server --service-start
+      - uses: launchdarkly/gh-actions/actions/persistent-stores@mk/sdk-1684/valkey
+        with:
+          redis: true
       - name: Test
         run: go test -race ./...
