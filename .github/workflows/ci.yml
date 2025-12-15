@@ -16,6 +16,7 @@ jobs:
   # Runs the common tasks (unit tests, lint, contract tests) for each Go version.
   test-linux-redis:
     name: ${{ format('Linux, Go {0}', matrix.go-version) }}
+    runs-on: ubuntu-latest
     needs: go-versions
     strategy:
       # Let jobs fail independently, in case it's a single version that's broken.
@@ -32,6 +33,7 @@ jobs:
 
   test-linux-valkey:
     name: ${{ format('Linux, Go {0}', matrix.go-version) }}
+    runs-on: ubuntu-latest
     needs: go-versions
     strategy:
       # Let jobs fail independently, in case it's a single version that's broken.
