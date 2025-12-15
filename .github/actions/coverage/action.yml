@@ -2,10 +2,12 @@ name: Coverage
 description: "Runs the code-coverage checker."
 inputs:
   enforce:
-    description: 'Whether to enforce coverage thresholds.'
+    description: "Whether to enforce coverage thresholds."
     required: false
-    default: 'false'
-
+    default: "false"
+  suffix:
+    description: "Artifact suffix"
+    required: true
 
 runs:
   using: composite
@@ -25,7 +27,7 @@ runs:
     - name: Upload coverage results
       uses: actions/upload-artifact@v4
       with:
-        name: Coverage-result-${{ steps.go-version.outputs.version }}
+        name: Coverage-result-${{ steps.go-version.outputs.version }}-${{ inputs.suffix }}
         path: build/coverage*
 
     - name: Enforce coverage
@@ -36,6 +38,6 @@ runs:
           if [ "${{ inputs.enforce }}" == "true" ]; then
             exit 1
           fi
-        else 
+        else
           echo "Code is fully covered!"
         fi
