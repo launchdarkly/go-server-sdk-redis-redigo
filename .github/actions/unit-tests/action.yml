@@ -5,6 +5,9 @@ inputs:
     description: "Whether to run linters."
     required: false
     default: "false"
+  suffix:
+    description: "Artifact suffix"
+    required: true
 
 runs:
   using: composite
@@ -31,5 +34,5 @@ runs:
       if: steps.process-test.outcome == 'success'
       uses: actions/upload-artifact@v4
       with:
-        name: Test-result-test${{ steps.go-version.outputs.version }}
+        name: Test-result-test${{ steps.go-version.outputs.version }}-${{ inputs.suffix }}
         path: junit_report.xml
