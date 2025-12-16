@@ -33,7 +33,7 @@ jobs:
             valkey_port: 6379
             suffix: valkey
     steps:
-      - uses: launchdarkly/gh-actions/actions/persistent-stores@mk/sdk-1684/valkey
+      - uses: launchdarkly/gh-actions/actions/persistent-stores@persistent-stores-v0.2.0
         with:
           redis: ${{ matrix.redis || false }}
           valkey: ${{ matrix.valkey || false }}
@@ -66,7 +66,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
-      - uses: launchdarkly/gh-actions/actions/persistent-stores@mk/sdk-1684/valkey
+      - uses: launchdarkly/gh-actions/actions/persistent-stores@persistent-stores-v0.2.0
         with:
           redis: true
       - name: Test
