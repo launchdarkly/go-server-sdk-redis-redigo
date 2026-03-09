@@ -14,7 +14,7 @@ import (
 func TestBigSegmentStore(t *testing.T) {
 	client, err := r.DialURL(redisURL)
 	require.NoError(t, err)
-	defer client.Close()
+	defer client.Close() //nolint:errcheck // test cleanup
 
 	setTestMetadata := func(prefix string, metadata subsystems.BigSegmentStoreMetadata) error {
 		if prefix == "" {
