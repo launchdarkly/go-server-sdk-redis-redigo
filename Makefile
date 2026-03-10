@@ -1,4 +1,3 @@
-
 GOLANGCI_LINT_VERSION=v2.11.1
 
 LINTER=./bin/golangci-lint

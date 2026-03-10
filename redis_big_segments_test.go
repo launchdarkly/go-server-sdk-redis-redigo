@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/launchdarkly/go-server-sdk/v6/subsystems"
-	"github.com/launchdarkly/go-server-sdk/v6/testhelpers/storetest"
+	"github.com/launchdarkly/go-server-sdk/v7/subsystems"
+	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/storetest"
 
 	r "github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/require"
