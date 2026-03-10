@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Go SDK Redis integration will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [3.0.1](https://github.com/launchdarkly/go-server-sdk-redis-redigo/compare/v3.0.0...v3.0.1) (2026-03-10)
+
+
+### Bug Fixes
+
+* Bump gopkg.in/yaml.v3 from 3.0.0 to 3.0.1 ([#30](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/30)) ([f4e4033](https://github.com/launchdarkly/go-server-sdk-redis-redigo/commit/f4e40336e9e679c61756970072e144b70a4b18f6))
+
 ## [3.0.0] - 2023-10-11
 ### Added:
 - Added support for SDK v7 to support technology migrations.
