@@ -45,7 +45,7 @@ func clearTestData(prefix string) error {
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer client.Close() //nolint:errcheck // test cleanup
 
 	cursor := 0
 	for {
