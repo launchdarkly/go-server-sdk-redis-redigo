@@ -100,7 +100,14 @@ func (store *redisDataStoreImpl) Get(
 ) (ldstoretypes.SerializedItemDescriptor, error) {
 	c := store.getConn()
 	defer c.Close() // nolint:errcheck
+	return store.getWithConn(c, kind, key)
+}
 
+func (store *redisDataStoreImpl) getWithConn(
+	c r.Conn,
+	kind ldstoretypes.DataKind,
+	key string,
+) (ldstoretypes.SerializedItemDescriptor, error) {
 	jsonStr, err := r.String(c.Do("HGET", store.featuresKey(kind), key))
 
 	if err != nil {
@@ -160,7 +167,7 @@ func (store *redisDataStoreImpl) Upsert(
 			store.testTxHook()
 		}
 
-		oldItem, err := store.Get(kind, key)
+		oldItem, err := store.getWithConn(c, kind, key)
 		if err != nil { // COVERAGE: can't cause an error here in unit tests
 			return false, err
 		}

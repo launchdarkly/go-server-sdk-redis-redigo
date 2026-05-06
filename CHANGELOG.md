@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Go SDK Redis integration will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [3.0.2](https://github.com/launchdarkly/go-server-sdk-redis-redigo/compare/v3.0.1...v3.0.2) (2026-05-04)
+
+
+### Bug Fixes
+
+* Reuse connection in Upsert to prevent deadlock ([#39](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/39)) ([a1bd118](https://github.com/launchdarkly/go-server-sdk-redis-redigo/commit/a1bd11827e2d36d3dcb9559ed8e398667d556ba8))
+
 ## [3.0.1](https://github.com/launchdarkly/go-server-sdk-redis-redigo/compare/v3.0.0...v3.0.1) (2026-03-10)
 
 
