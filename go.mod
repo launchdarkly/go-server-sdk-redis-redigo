@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	github.com/gomodule/redigo v1.8.2
 	github.com/launchdarkly/go-sdk-common/v4 v4.0.0
-	github.com/launchdarkly/go-server-sdk/v7 v7.15.1-0.20260529202418-8ab3995b9066
+	github.com/launchdarkly/go-server-sdk/v7 v7.15.1-0.20260529220055-f45511677931
 	github.com/stretchr/testify v1.9.0
 )
 
