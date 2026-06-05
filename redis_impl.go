@@ -1,6 +1,7 @@
 package ldredis
 
 import (
+	"context"
 	"net/url"
 	"time"
 
@@ -18,14 +19,53 @@ type redisDataStoreImpl struct {
 	testTxHook func()
 }
 
-func newPool(url string, dialOptions []r.DialOption) *r.Pool {
+// newPool builds an internally-managed redigo connection pool from builderOptions.
+//
+// When opts.passwordProvider is set, the Dial closure invokes it once per dial to obtain a
+// fresh password and appends a redigo.DialPassword option for that dial. The provider receives
+// context.Background() because Redigo's Dial signature does not surface a per-dial context. If
+// the provider returns an error, the dial fails and the error is propagated to the caller.
+//
+// If opts.passwordProvider is set alongside DialOptions that include redigo.DialPassword, the
+// provider's password is appended last and therefore wins for that dial (later DialOptions
+// override earlier ones in redigo). A warning is logged once at pool construction time so
+// operators notice the ambiguous configuration.
+//
+// opts.maxConnLifetime, when nonzero, is applied to the pool's MaxConnLifetime field. Zero
+// means "no limit" — matching Redigo's default.
+func newPool(opts builderOptions, loggers ldlog.Loggers) *r.Pool {
+	// If both PasswordProvider and DialOptions are configured, warn. We can't detect
+	// DialPassword reliably (it's an opaque DialOption func), so we warn whenever both
+	// passwordProvider and any dialOptions are present. The provider value always takes
+	// precedence because it is appended after the caller's dialOptions in the dial slice.
+	if opts.passwordProvider != nil && len(opts.dialOptions) > 0 {
+		loggers.Warn(
+			"PasswordProvider is set alongside DialOptions; if DialOptions includes DialPassword, " +
+				"the PasswordProvider value will take precedence for each dial.",
+		)
+	}
+
+	dialOpts := opts.dialOptions
+	passwordProvider := opts.passwordProvider
+	dialURL := opts.url
+
 	pool := &r.Pool{
-		MaxIdle:     20,
-		MaxActive:   16,
-		Wait:        true,
-		IdleTimeout: 300 * time.Second,
+		MaxIdle:         20,
+		MaxActive:       16,
+		Wait:            true,
+		IdleTimeout:     300 * time.Second,
+		MaxConnLifetime: opts.maxConnLifetime,
 		Dial: func() (c r.Conn, err error) {
-			c, err = r.DialURL(url, dialOptions...)
+			thisDialOpts := dialOpts
+			if passwordProvider != nil {
+				pw, perr := passwordProvider(context.Background())
+				if perr != nil {
+					return nil, perr
+				}
+				// Append after caller's options so this wins if both set DialPassword.
+				thisDialOpts = append(append([]r.DialOption(nil), dialOpts...), r.DialPassword(pw))
+			}
+			c, err = r.DialURL(dialURL, thisDialOpts...)
 			return
 		},
 		TestOnBorrow: func(c r.Conn, t time.Time) error {
@@ -51,7 +91,7 @@ func newRedisDataStoreImpl(
 
 	if impl.pool == nil {
 		logRedisURL(loggers, builder.url)
-		impl.pool = newPool(builder.url, builder.dialOptions)
+		impl.pool = newPool(builder, impl.loggers)
 	}
 	return impl
 }
