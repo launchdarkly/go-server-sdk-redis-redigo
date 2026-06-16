@@ -32,7 +32,7 @@ func newRedisBigSegmentStoreImpl(
 
 	if impl.pool == nil {
 		logRedisURL(loggers, builder.url)
-		impl.pool = newPool(builder.url, builder.dialOptions)
+		impl.pool = newPool(builder, impl.loggers)
 	}
 	return impl
 }

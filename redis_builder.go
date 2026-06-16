@@ -1,7 +1,9 @@
 package ldredis
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	r "github.com/gomodule/redigo/redis"
 
@@ -86,10 +88,10 @@ func BigSegmentStore() *StoreBuilder[subsystems.BigSegmentStore] {
 // In this example, the main data store uses a Redis host called "host1", and the Big Segment
 // store uses a Redis host called "host2":
 //
-//     config.DataStore = ldcomponents.PersistentDataStore(
-//         ldredis.DataStore().URL("redis://host1:6379")
-//     config.BigSegments = ldcomponents.BigSegments(
-//         ldredis.DataStore().URL("redis://host2:6379")
+//	config.DataStore = ldcomponents.PersistentDataStore(
+//	    ldredis.DataStore().URL("redis://host1:6379")
+//	config.BigSegments = ldcomponents.BigSegments(
+//	    ldredis.DataStore().URL("redis://host2:6379")
 //
 // Note that the SDK also has its own options related to data storage that are configured
 // at a different level, because they are independent of what database is being used. For
@@ -105,10 +107,12 @@ type StoreBuilder[T any] struct {
 }
 
 type builderOptions struct {
-	prefix      string
-	pool        Pool
-	url         string
-	dialOptions []r.DialOption
+	prefix           string
+	pool             Pool
+	url              string
+	dialOptions      []r.DialOption
+	passwordProvider func(ctx context.Context) (string, error)
+	maxConnLifetime  time.Duration
 }
 
 // Prefix specifies a string that should be prepended to all Redis keys used by the data store.
@@ -148,6 +152,9 @@ func (b *StoreBuilder[T]) HostAndPort(host string, port int) *StoreBuilder[T] {
 // simpler to use DialOptions.
 //
 // Use PoolInterface if you want to provide your own implementation of a connection pool.
+//
+// When Pool or PoolInterface is set, PasswordProvider and MaxConnLifetime have no effect — the
+// caller owns the pool and is responsible for its configuration.
 func (b *StoreBuilder[T]) Pool(pool *r.Pool) *StoreBuilder[T] {
 	b.builderOptions.pool = pool
 	return b
@@ -155,6 +162,9 @@ func (b *StoreBuilder[T]) Pool(pool *r.Pool) *StoreBuilder[T] {
 
 // PoolInterface is equivalent to Pool, but uses an interface type rather than a concrete
 // implementation type. This allows implementation of custom behaviors for connection management.
+//
+// When Pool or PoolInterface is set, PasswordProvider and MaxConnLifetime have no effect — the
+// caller owns the pool and is responsible for its configuration.
 func (b *StoreBuilder[T]) PoolInterface(pool Pool) *StoreBuilder[T] {
 	b.builderOptions.pool = pool
 	return b
@@ -163,16 +173,52 @@ func (b *StoreBuilder[T]) PoolInterface(pool Pool) *StoreBuilder[T] {
 // DialOptions specifies any of the advanced Redis connection options supported by Redigo, such as
 // DialPassword.
 //
-//     import (
-//         redigo "github.com/garyburd/redigo/redis"
-//         ldredis "github.com/launchdarkly/go-server-sdk-redis-redigo/v3"
-//     )
-//     config.DataSource = ldcomponents.PersistentDataStore(
-//         ldredis.DataStore().DialOptions(redigo.DialPassword("verysecure123")),
-//     )
+//	import (
+//	    redigo "github.com/garyburd/redigo/redis"
+//	    ldredis "github.com/launchdarkly/go-server-sdk-redis-redigo/v3"
+//	)
+//	config.DataSource = ldcomponents.PersistentDataStore(
+//	    ldredis.DataStore().DialOptions(redigo.DialPassword("verysecure123")),
+//	)
+//
 // Note that some Redis client features can also be specified as part of the URL: see  URL().
 func (b *StoreBuilder[T]) DialOptions(options ...r.DialOption) *StoreBuilder[T] {
 	b.builderOptions.dialOptions = options
+	return b
+}
+
+// PasswordProvider configures a callback that is invoked once per pool Dial to obtain a fresh
+// password. This is intended for use with short-lived credentials such as AWS IAM authentication
+// tokens for ElastiCache, where a new token must be generated for each new connection.
+//
+// The callback receives context.Background() because Redigo's Dial interface does not surface a
+// context. If your provider requires a context with a deadline or cancellation signal, wrap it
+// inside the callback.
+//
+// PasswordProvider is mutually exclusive with passing redigo.DialPassword via DialOptions. If
+// both are set, the PasswordProvider value takes precedence for that dial and a warning is
+// logged. To avoid ambiguity, use only one mechanism.
+//
+// PasswordProvider has no effect when Pool or PoolInterface is set — in that case the caller
+// owns the pool and is responsible for its own authentication configuration.
+func (b *StoreBuilder[T]) PasswordProvider(fn func(ctx context.Context) (string, error)) *StoreBuilder[T] {
+	b.builderOptions.passwordProvider = fn
+	return b
+}
+
+// MaxConnLifetime sets the maximum lifetime of a pooled connection. Connections older than this
+// duration are closed and replaced when returned to or requested from the pool. A value of zero
+// (the default) means connections are never closed due to age — matching Redigo's default.
+//
+// This is useful when connections must be periodically re-authenticated. For example, AWS
+// ElastiCache forcibly disconnects IAM-authenticated connections after 12 hours; setting
+// MaxConnLifetime to 11 hours ensures the pool proactively recycles connections before that
+// limit is reached.
+//
+// MaxConnLifetime has no effect when Pool or PoolInterface is set — in that case the caller
+// owns the pool and is responsible for its own lifecycle configuration.
+func (b *StoreBuilder[T]) MaxConnLifetime(d time.Duration) *StoreBuilder[T] {
+	b.builderOptions.maxConnLifetime = d
 	return b
 }
 
