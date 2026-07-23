@@ -13,6 +13,27 @@ import (
 	"github.com/launchdarkly/go-server-sdk/v7/subsystems/ldstoretypes"
 )
 
+func TestUpsertReturnsExecError(t *testing.T) {
+	execErr := errors.New("EXEC failed")
+	conn := &execErrorConn{execErr: execErr}
+	pool := &scriptedConnectionPool{t: t, connections: []*execErrorConn{conn}}
+	store := &redisDataStoreImpl{
+		prefix:  "test",
+		pool:    pool,
+		loggers: ldlog.NewDisabledLoggers(),
+	}
+
+	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
+		Version:        1,
+		SerializedItem: []byte(`{"key":"flag-key","version":1}`),
+	})
+
+	require.False(t, updated, "a failed transaction must not be reported as an update")
+	require.ErrorIs(t, err, execErr)
+	require.Equal(t, 1, pool.getCount)
+	require.Equal(t, 1, conn.closeCount, "the connection should be returned after EXEC fails")
+}
+
 func TestUpsertReturnsConnectionOnCommandErrors(t *testing.T) {
 	watchErr := errors.New("WATCH failed")
 	hgetErr := errors.New("HGET failed")
