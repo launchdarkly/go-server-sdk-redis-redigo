@@ -13,6 +13,34 @@ import (
 	"github.com/launchdarkly/go-server-sdk/v7/subsystems/ldstoretypes"
 )
 
+func TestUpsertReleasesConnectionBeforeRetry(t *testing.T) {
+	pool := &singleActiveConnectionPool{
+		t: t,
+		connections: []*upsertTestConn{
+			{execReply: nil},
+			{execReply: []any{[]byte("OK")}},
+		},
+	}
+	loggers := ldlog.NewDisabledLoggers()
+	loggers.SetMinLevel(ldlog.Debug)
+	store := &redisDataStoreImpl{
+		prefix:  "test",
+		pool:    pool,
+		loggers: loggers,
+	}
+
+	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
+		Version:        1,
+		SerializedItem: []byte(`{"key":"flag-key","version":1}`),
+	})
+
+	require.NoError(t, err)
+	require.True(t, updated)
+	require.Equal(t, 2, pool.getCount, "the nil EXEC response should cause exactly one retry")
+	require.Equal(t, 0, pool.activeCount, "all borrowed connections should be returned")
+	require.Equal(t, 1, pool.maxActiveCount, "a retry must not retain the previous connection")
+}
+
 func TestUpsertReturnsConnectionOnErrors(t *testing.T) {
 	watchErr := errors.New("WATCH failed")
 	hgetErr := errors.New("HGET failed")
