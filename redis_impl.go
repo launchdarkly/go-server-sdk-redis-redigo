@@ -208,14 +208,15 @@ func (store *redisDataStoreImpl) tryUpsert(
 	if err == nil {
 		var result interface{}
 		result, err = c.Do("EXEC")
-		if err == nil {
-			if result == nil {
-				// if exec returned nothing, it means the watch was triggered and we should retry
-				if store.loggers.IsDebugEnabled() { // COVERAGE: tests don't verify debug logging
-					store.loggers.Debug("Concurrent modification detected, retrying")
-				}
-				return false, true, nil
+		if err != nil {
+			return false, false, err
+		}
+		if result == nil {
+			// if exec returned nothing, it means the watch was triggered and we should retry
+			if store.loggers.IsDebugEnabled() { // COVERAGE: tests don't verify debug logging
+				store.loggers.Debug("Concurrent modification detected, retrying")
 			}
+			return false, true, nil
 		}
 		return true, false, nil
 	}
