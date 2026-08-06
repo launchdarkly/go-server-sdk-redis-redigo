@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
+	"github.com/launchdarkly/go-sdk-common/v3/ldlogtest"
 	"github.com/launchdarkly/go-server-sdk/v7/subsystems/ldstoreimpl"
 	"github.com/launchdarkly/go-server-sdk/v7/subsystems/ldstoretypes"
 )
@@ -18,15 +19,15 @@ func TestUpsertReleasesConnectionBeforeRetry(t *testing.T) {
 		t: t,
 		connections: []*upsertTestConn{
 			{execReply: nil},
-			{execReply: []any{[]byte("OK")}},
+			{execReply: []interface{}{[]byte("OK")}},
 		},
 	}
-	loggers := ldlog.NewDisabledLoggers()
-	loggers.SetMinLevel(ldlog.Debug)
+	mockLog := ldlogtest.NewMockLog()
+	mockLog.Loggers.SetMinLevel(ldlog.Debug)
 	store := &redisDataStoreImpl{
 		prefix:  "test",
 		pool:    pool,
-		loggers: loggers,
+		loggers: mockLog.Loggers,
 	}
 
 	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
@@ -39,6 +40,10 @@ func TestUpsertReleasesConnectionBeforeRetry(t *testing.T) {
 	require.Equal(t, 2, pool.getCount, "the nil EXEC response should cause exactly one retry")
 	require.Equal(t, 0, pool.activeCount, "all borrowed connections should be returned")
 	require.Equal(t, 1, pool.maxActiveCount, "a retry must not retain the previous connection")
+	for _, conn := range pool.connections {
+		require.Equal(t, 1, conn.closeCount, "each connection should be closed exactly once")
+	}
+	mockLog.AssertMessageMatch(t, true, ldlog.Debug, "Concurrent modification detected, retrying")
 }
 
 func TestUpsertReturnsConnectionOnErrors(t *testing.T) {
@@ -74,12 +79,12 @@ func TestUpsertReturnsConnectionOnErrors(t *testing.T) {
 	}
 }
 
-func TestUpsertDoesNotReplaceNewerDeletedItem(t *testing.T) {
+func TestUpsertDoesNotDeleteNewerItem(t *testing.T) {
 	conn := &upsertTestConn{hgetReply: []byte("existing")}
 	pool := &singleActiveConnectionPool{t: t, connections: []*upsertTestConn{conn}}
-	loggers := ldlog.NewDisabledLoggers()
-	loggers.SetMinLevel(ldlog.Debug)
-	store := &redisDataStoreImpl{prefix: "test", pool: pool, loggers: loggers}
+	mockLog := ldlogtest.NewMockLog()
+	mockLog.Loggers.SetMinLevel(ldlog.Debug)
+	store := &redisDataStoreImpl{prefix: "test", pool: pool, loggers: mockLog.Loggers}
 
 	updated, err := store.Upsert(fixedVersionKind{version: 2}, "flag-key", ldstoretypes.SerializedItemDescriptor{
 		Version:        1,
@@ -90,20 +95,24 @@ func TestUpsertDoesNotReplaceNewerDeletedItem(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, updated)
 	require.Equal(t, 1, conn.closeCount)
+	mockLog.AssertMessageMatch(t, true, ldlog.Debug,
+		"Attempted to delete key: flag-key version: 2 .* with a version that is the same or older: 1")
 }
 
-func TestUpsertReturnsConnectionOnExecError(t *testing.T) {
+func TestUpsertReturnsExecError(t *testing.T) {
 	execErr := errors.New("EXEC failed")
 	conn := &upsertTestConn{execErr: execErr}
 	pool := &singleActiveConnectionPool{t: t, connections: []*upsertTestConn{conn}}
 	store := &redisDataStoreImpl{prefix: "test", pool: pool, loggers: ldlog.NewDisabledLoggers()}
 
-	_, _ = store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
+	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
 		Version:        1,
 		SerializedItem: []byte("new"),
 	})
 
-	require.Equal(t, 1, conn.closeCount)
+	require.False(t, updated, "a failed transaction must not be reported as an update")
+	require.ErrorIs(t, err, execErr)
+	require.Equal(t, 1, conn.closeCount, "the connection should be returned after EXEC fails")
 	require.Zero(t, pool.activeCount)
 }
 
@@ -135,10 +144,10 @@ func (p *singleActiveConnectionPool) Close() error { return nil }
 type upsertTestConn struct {
 	pool       *singleActiveConnectionPool
 	watchErr   error
-	hgetReply  any
+	hgetReply  interface{}
 	hgetErr    error
 	hsetErr    error
-	execReply  any
+	execReply  interface{}
 	execErr    error
 	closeCount int
 }
@@ -153,7 +162,7 @@ func (c *upsertTestConn) Close() error {
 
 func (c *upsertTestConn) Err() error { return nil }
 
-func (c *upsertTestConn) Do(commandName string, _ ...any) (any, error) {
+func (c *upsertTestConn) Do(commandName string, _ ...interface{}) (interface{}, error) {
 	switch commandName {
 	case "WATCH":
 		return "OK", c.watchErr
@@ -169,7 +178,7 @@ func (c *upsertTestConn) Do(commandName string, _ ...any) (any, error) {
 	}
 }
 
-func (c *upsertTestConn) Send(commandName string, _ ...any) error {
+func (c *upsertTestConn) Send(commandName string, _ ...interface{}) error {
 	switch commandName {
 	case "MULTI", "UNWATCH":
 		return nil
@@ -182,7 +191,7 @@ func (c *upsertTestConn) Send(commandName string, _ ...any) error {
 
 func (c *upsertTestConn) Flush() error { return nil }
 
-func (c *upsertTestConn) Receive() (any, error) { return nil, nil }
+func (c *upsertTestConn) Receive() (interface{}, error) { return nil, nil }
 
 type fixedVersionKind struct{ version int }
 

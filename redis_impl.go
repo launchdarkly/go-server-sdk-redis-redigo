@@ -159,16 +159,20 @@ func (store *redisDataStoreImpl) Upsert(
 	}
 }
 
+// tryUpsert makes a single attempt at the optimistic-concurrency update, acquiring its own
+// connection from the pool and returning it to the pool before the attempt ends. If retry is
+// true, the watched key was modified by another client before the transaction committed and the
+// caller should try again; updated and err are not meaningful in that case.
 func (store *redisDataStoreImpl) tryUpsert(
 	kind ldstoretypes.DataKind,
 	key string,
 	baseKey string,
 	newItem ldstoretypes.SerializedItemDescriptor,
-) (bool, bool, error) {
+) (updated bool, retry bool, err error) {
 	c := store.getConn()
 	defer c.Close() // nolint:errcheck
 
-	_, err := c.Do("WATCH", baseKey)
+	_, err = c.Do("WATCH", baseKey)
 	if err != nil {
 		return false, false, err
 	}
@@ -180,7 +184,7 @@ func (store *redisDataStoreImpl) tryUpsert(
 	}
 
 	oldItem, err := store.getWithConn(c, kind, key)
-	if err != nil { // COVERAGE: can't cause an error here in unit tests
+	if err != nil {
 		return false, false, err
 	}
 
@@ -196,7 +200,7 @@ func (store *redisDataStoreImpl) tryUpsert(
 		if newItem.Deleted {
 			updateOrDelete = "delete"
 		}
-		if store.loggers.IsDebugEnabled() { // COVERAGE: tests don't verify debug logging
+		if store.loggers.IsDebugEnabled() {
 			store.loggers.Debugf(`Attempted to %s key: %s version: %d in "%s" with a version that is the same or older: %d`,
 				updateOrDelete, key, oldVersion, kind, newItem.Version)
 		}
@@ -213,14 +217,14 @@ func (store *redisDataStoreImpl) tryUpsert(
 		}
 		if result == nil {
 			// if exec returned nothing, it means the watch was triggered and we should retry
-			if store.loggers.IsDebugEnabled() { // COVERAGE: tests don't verify debug logging
+			if store.loggers.IsDebugEnabled() {
 				store.loggers.Debug("Concurrent modification detected, retrying")
 			}
 			return false, true, nil
 		}
 		return true, false, nil
 	}
-	return false, false, err // COVERAGE: can't cause an error here in unit tests
+	return false, false, err
 }
 
 func (store *redisDataStoreImpl) IsInitialized() bool {
