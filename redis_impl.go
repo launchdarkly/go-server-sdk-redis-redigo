@@ -1,6 +1,7 @@
 package ldredis
 
 import (
+	"fmt"
 	"net/url"
 	"time"
 
@@ -37,6 +38,12 @@ func newPool(url string, dialOptions []r.DialOption) *r.Pool {
 }
 
 const initedKey = "$inited"
+
+// The maximum number of attempts Upsert will make before giving up. WATCH covers the entire
+// hash for a data kind rather than the individual item key, so every concurrent update of that
+// kind contends on the same key; without a limit a caller can be starved indefinitely during a
+// burst of updates. This matches the limit used by the go-redis implementation of this store.
+const maxRetries = 10
 
 func newRedisDataStoreImpl(
 	builder builderOptions,
@@ -145,18 +152,23 @@ func (store *redisDataStoreImpl) GetAll(
 	return results, nil
 }
 
+// Upsert retries the update as long as another client keeps modifying the watched key, up to
+// maxRetries attempts. If the attempts run out, the item was not written and an error is returned
+// so that the SDK can treat the store as unavailable and refresh it once it recovers.
 func (store *redisDataStoreImpl) Upsert(
 	kind ldstoretypes.DataKind,
 	key string,
 	newItem ldstoretypes.SerializedItemDescriptor,
 ) (bool, error) {
 	baseKey := store.featuresKey(kind)
-	for {
+	for range maxRetries {
 		updated, retry, err := store.tryUpsert(kind, key, baseKey, newItem)
 		if !retry {
 			return updated, err
 		}
 	}
+	return false, fmt.Errorf("failed to update key %q in %q after %d attempts",
+		key, kind.GetName(), maxRetries)
 }
 
 // tryUpsert makes a single attempt at the optimistic-concurrency update, acquiring its own

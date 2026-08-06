@@ -116,6 +116,30 @@ func TestUpsertReturnsExecError(t *testing.T) {
 	require.Zero(t, pool.activeCount)
 }
 
+func TestUpsertGivesUpAfterMaxRetries(t *testing.T) {
+	// Every attempt sees a nil EXEC reply, so the watched key looks perpetually contended. The pool
+	// fails the test if Upsert asks for more connections than there are attempts allowed.
+	connections := make([]*upsertTestConn, maxRetries)
+	for i := range connections {
+		connections[i] = &upsertTestConn{execReply: nil}
+	}
+	pool := &singleActiveConnectionPool{t: t, connections: connections}
+	store := &redisDataStoreImpl{prefix: "test", pool: pool, loggers: ldlog.NewDisabledLoggers()}
+
+	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
+		Version:        1,
+		SerializedItem: []byte("new"),
+	})
+
+	require.False(t, updated, "an abandoned update must not be reported as an update")
+	require.EqualError(t, err, `failed to update key "flag-key" in "features" after 10 attempts`)
+	require.Equal(t, maxRetries, pool.getCount, "Upsert should make exactly maxRetries attempts")
+	require.Zero(t, pool.activeCount)
+	for _, conn := range connections {
+		require.Equal(t, 1, conn.closeCount, "each connection should be closed exactly once")
+	}
+}
+
 type singleActiveConnectionPool struct {
 	t              *testing.T
 	connections    []*upsertTestConn
