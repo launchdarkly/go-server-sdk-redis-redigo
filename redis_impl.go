@@ -152,64 +152,79 @@ func (store *redisDataStoreImpl) Upsert(
 ) (bool, error) {
 	baseKey := store.featuresKey(kind)
 	for {
-		// We accept that we can acquire multiple connections here and defer inside loop but we don't expect many
-		c := store.getConn()
-		defer c.Close() // nolint:errcheck
-
-		_, err := c.Do("WATCH", baseKey)
-		if err != nil {
-			return false, err
+		updated, retry, err := store.tryUpsert(kind, key, baseKey, newItem)
+		if !retry {
+			return updated, err
 		}
-
-		defer c.Send("UNWATCH") // nolint:errcheck // this should always succeed
-
-		if store.testTxHook != nil { // instrumentation for unit tests
-			store.testTxHook()
-		}
-
-		oldItem, err := store.getWithConn(c, kind, key)
-		if err != nil { // COVERAGE: can't cause an error here in unit tests
-			return false, err
-		}
-
-		// In this implementation, we have to parse the existing item in order to determine its version.
-		oldVersion := oldItem.Version
-		if oldItem.SerializedItem != nil {
-			parsed, _ := kind.Deserialize(oldItem.SerializedItem)
-			oldVersion = parsed.Version
-		}
-
-		if oldVersion >= newItem.Version {
-			updateOrDelete := "update"
-			if newItem.Deleted {
-				updateOrDelete = "delete"
-			}
-			if store.loggers.IsDebugEnabled() { // COVERAGE: tests don't verify debug logging
-				store.loggers.Debugf(`Attempted to %s key: %s version: %d in "%s" with a version that is the same or older: %d`,
-					updateOrDelete, key, oldVersion, kind, newItem.Version)
-			}
-			return false, nil
-		}
-
-		_ = c.Send("MULTI")
-		err = c.Send("HSET", baseKey, key, newItem.SerializedItem)
-		if err == nil {
-			var result interface{}
-			result, err = c.Do("EXEC")
-			if err != nil {
-				return false, err
-			}
-			if result == nil {
-				// if exec returned nothing, it means the watch was triggered and we should retry
-				if store.loggers.IsDebugEnabled() { // COVERAGE: tests don't verify debug logging
-					store.loggers.Debug("Concurrent modification detected, retrying")
-				}
-				continue
-			}
-			return true, nil
-		}
-		return false, err // COVERAGE: can't cause an error here in unit tests
 	}
+}
+
+// tryUpsert makes a single attempt at the optimistic-concurrency update, acquiring its own
+// connection from the pool and returning it to the pool before the attempt ends. If retry is
+// true, the watched key was modified by another client before the transaction committed and the
+// caller should try again; updated and err are not meaningful in that case.
+func (store *redisDataStoreImpl) tryUpsert(
+	kind ldstoretypes.DataKind,
+	key string,
+	baseKey string,
+	newItem ldstoretypes.SerializedItemDescriptor,
+) (updated bool, retry bool, err error) {
+	c := store.getConn()
+	defer c.Close() // nolint:errcheck
+
+	_, err = c.Do("WATCH", baseKey)
+	if err != nil {
+		return false, false, err
+	}
+
+	defer c.Send("UNWATCH") // nolint:errcheck // this should always succeed
+
+	if store.testTxHook != nil { // instrumentation for unit tests
+		store.testTxHook()
+	}
+
+	oldItem, err := store.getWithConn(c, kind, key)
+	if err != nil {
+		return false, false, err
+	}
+
+	// In this implementation, we have to parse the existing item in order to determine its version.
+	oldVersion := oldItem.Version
+	if oldItem.SerializedItem != nil {
+		parsed, _ := kind.Deserialize(oldItem.SerializedItem)
+		oldVersion = parsed.Version
+	}
+
+	if oldVersion >= newItem.Version {
+		updateOrDelete := "update"
+		if newItem.Deleted {
+			updateOrDelete = "delete"
+		}
+		if store.loggers.IsDebugEnabled() {
+			store.loggers.Debugf(`Attempted to %s key: %s version: %d in "%s" with a version that is the same or older: %d`,
+				updateOrDelete, key, oldVersion, kind, newItem.Version)
+		}
+		return false, false, nil
+	}
+
+	_ = c.Send("MULTI")
+	err = c.Send("HSET", baseKey, key, newItem.SerializedItem)
+	if err == nil {
+		var result interface{}
+		result, err = c.Do("EXEC")
+		if err != nil {
+			return false, false, err
+		}
+		if result == nil {
+			// if exec returned nothing, it means the watch was triggered and we should retry
+			if store.loggers.IsDebugEnabled() {
+				store.loggers.Debug("Concurrent modification detected, retrying")
+			}
+			return false, true, nil
+		}
+		return true, false, nil
+	}
+	return false, false, err
 }
 
 func (store *redisDataStoreImpl) IsInitialized() bool {
