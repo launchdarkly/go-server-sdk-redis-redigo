@@ -14,20 +14,58 @@ import (
 	"github.com/launchdarkly/go-server-sdk/v7/subsystems/ldstoretypes"
 )
 
-func TestUpsertReleasesConnectionBeforeRetry(t *testing.T) {
-	pool := &singleActiveConnectionPool{
-		t: t,
-		connections: []*upsertTestConn{
-			{execReply: nil},
-			{execReply: []interface{}{[]byte("OK")}},
-		},
-	}
-	mockLog := ldlogtest.NewMockLog()
-	mockLog.Loggers.SetMinLevel(ldlog.Debug)
+func TestUpsertRunsAtomicScriptWithExistingStorageFormat(t *testing.T) {
+	conn := &upsertTestConn{scriptReply: int64(1)}
 	store := &redisDataStoreImpl{
 		prefix:  "test",
-		pool:    pool,
-		loggers: mockLog.Loggers,
+		pool:    &upsertTestPool{conn: conn},
+		loggers: ldlog.NewDisabledLoggers(),
+	}
+	item := ldstoretypes.SerializedItemDescriptor{
+		Version:        2,
+		SerializedItem: []byte(`{"key":"flag-key","version":2}`),
+	}
+
+	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", item)
+
+	require.NoError(t, err)
+	require.True(t, updated)
+	require.Equal(t, "EVALSHA", conn.command)
+	require.Len(t, conn.args, 7)
+	require.Equal(t, 1, conn.args[1])
+	require.Equal(t, "test:features", conn.args[2])
+	require.Equal(t, "flag-key", conn.args[3])
+	require.Equal(t, false, conn.args[4])
+	require.Nil(t, conn.args[5])
+	require.Equal(t, item.SerializedItem, conn.args[6])
+	require.Equal(t, 1, conn.closeCount)
+}
+
+func TestUpsertReportsOlderVersionAsNotUpdated(t *testing.T) {
+	conn := &upsertTestConn{hgetReply: []byte("existing")}
+	mockLog := ldlogtest.NewMockLog()
+	mockLog.Loggers.SetMinLevel(ldlog.Debug)
+	store := &redisDataStoreImpl{prefix: "test", pool: &upsertTestPool{conn: conn}, loggers: mockLog.Loggers}
+
+	updated, err := store.Upsert(fixedVersionKind{version: 2}, "flag-key", ldstoretypes.SerializedItemDescriptor{
+		Version:        2,
+		Deleted:        true,
+		SerializedItem: []byte(`{"key":"flag-key","version":2,"deleted":true}`),
+	})
+
+	require.NoError(t, err)
+	require.False(t, updated)
+	mockLog.AssertMessageMatch(t, true, ldlog.Debug,
+		`Attempted to delete key: flag-key .* with a version that is the same or older: 2`)
+}
+
+func TestUpsertReturnsScriptError(t *testing.T) {
+	scriptErr := errors.New("script failed")
+	conn := &upsertTestConn{scriptErr: scriptErr}
+	store := &redisDataStoreImpl{
+		prefix:  "test",
+		pool:    &upsertTestPool{conn: conn},
+		loggers: ldlog.NewDisabledLoggers(),
 	}
 
 	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
@@ -35,182 +73,88 @@ func TestUpsertReleasesConnectionBeforeRetry(t *testing.T) {
 		SerializedItem: []byte(`{"key":"flag-key","version":1}`),
 	})
 
-	require.NoError(t, err)
-	require.True(t, updated)
-	require.Equal(t, 2, pool.getCount, "the nil EXEC response should cause exactly one retry")
-	require.Equal(t, 0, pool.activeCount, "all borrowed connections should be returned")
-	require.Equal(t, 1, pool.maxActiveCount, "a retry must not retain the previous connection")
-	for _, conn := range pool.connections {
-		require.Equal(t, 1, conn.closeCount, "each connection should be closed exactly once")
-	}
-	mockLog.AssertMessageMatch(t, true, ldlog.Debug, "Concurrent modification detected, retrying")
-}
-
-func TestUpsertReturnsConnectionOnErrors(t *testing.T) {
-	watchErr := errors.New("WATCH failed")
-	hgetErr := errors.New("HGET failed")
-	hsetErr := errors.New("HSET failed")
-
-	tests := []struct {
-		name string
-		conn *upsertTestConn
-		err  error
-	}{
-		{name: "watch", conn: &upsertTestConn{watchErr: watchErr}, err: watchErr},
-		{name: "read", conn: &upsertTestConn{hgetErr: hgetErr}, err: hgetErr},
-		{name: "write", conn: &upsertTestConn{hsetErr: hsetErr}, err: hsetErr},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			pool := &singleActiveConnectionPool{t: t, connections: []*upsertTestConn{test.conn}}
-			store := &redisDataStoreImpl{prefix: "test", pool: pool, loggers: ldlog.NewDisabledLoggers()}
-
-			updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
-				Version:        1,
-				SerializedItem: []byte("new"),
-			})
-
-			require.False(t, updated)
-			require.ErrorIs(t, err, test.err)
-			require.Equal(t, 1, test.conn.closeCount)
-			require.Zero(t, pool.activeCount)
-		})
-	}
-}
-
-func TestUpsertDoesNotDeleteNewerItem(t *testing.T) {
-	conn := &upsertTestConn{hgetReply: []byte("existing")}
-	pool := &singleActiveConnectionPool{t: t, connections: []*upsertTestConn{conn}}
-	mockLog := ldlogtest.NewMockLog()
-	mockLog.Loggers.SetMinLevel(ldlog.Debug)
-	store := &redisDataStoreImpl{prefix: "test", pool: pool, loggers: mockLog.Loggers}
-
-	updated, err := store.Upsert(fixedVersionKind{version: 2}, "flag-key", ldstoretypes.SerializedItemDescriptor{
-		Version:        1,
-		Deleted:        true,
-		SerializedItem: []byte("new"),
-	})
-
-	require.NoError(t, err)
 	require.False(t, updated)
+	require.ErrorIs(t, err, scriptErr)
 	require.Equal(t, 1, conn.closeCount)
-	mockLog.AssertMessageMatch(t, true, ldlog.Debug,
-		"Attempted to delete key: flag-key version: 2 .* with a version that is the same or older: 1")
 }
 
-func TestUpsertReturnsExecError(t *testing.T) {
-	execErr := errors.New("EXEC failed")
-	conn := &upsertTestConn{execErr: execErr}
-	pool := &singleActiveConnectionPool{t: t, connections: []*upsertTestConn{conn}}
-	store := &redisDataStoreImpl{prefix: "test", pool: pool, loggers: ldlog.NewDisabledLoggers()}
-
-	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
-		Version:        1,
-		SerializedItem: []byte("new"),
-	})
-
-	require.False(t, updated, "a failed transaction must not be reported as an update")
-	require.ErrorIs(t, err, execErr)
-	require.Equal(t, 1, conn.closeCount, "the connection should be returned after EXEC fails")
-	require.Zero(t, pool.activeCount)
-}
-
-func TestUpsertGivesUpAfterMaxRetries(t *testing.T) {
-	// Every attempt sees a nil EXEC reply, so the watched key looks perpetually contended. The pool
-	// fails the test if Upsert asks for more connections than there are attempts allowed.
-	connections := make([]*upsertTestConn, maxRetries)
-	for i := range connections {
-		connections[i] = &upsertTestConn{execReply: nil}
+func TestUpsertReturnsReadError(t *testing.T) {
+	readErr := errors.New("read failed")
+	conn := &upsertTestConn{hgetErr: readErr}
+	store := &redisDataStoreImpl{
+		prefix:  "test",
+		pool:    &upsertTestPool{conn: conn},
+		loggers: ldlog.NewDisabledLoggers(),
 	}
-	pool := &singleActiveConnectionPool{t: t, connections: connections}
-	store := &redisDataStoreImpl{prefix: "test", pool: pool, loggers: ldlog.NewDisabledLoggers()}
 
 	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
 		Version:        1,
-		SerializedItem: []byte("new"),
+		SerializedItem: []byte(`{"key":"flag-key","version":1}`),
 	})
 
-	require.False(t, updated, "an abandoned update must not be reported as an update")
+	require.False(t, updated)
+	require.ErrorIs(t, err, readErr)
+	require.Equal(t, 1, conn.closeCount)
+}
+
+func TestUpsertGivesUpAfterSameItemKeepsChanging(t *testing.T) {
+	conn := &upsertTestConn{scriptReply: int64(0)}
+	store := &redisDataStoreImpl{
+		prefix:  "test",
+		pool:    &upsertTestPool{conn: conn},
+		loggers: ldlog.NewDisabledLoggers(),
+	}
+
+	updated, err := store.Upsert(ldstoreimpl.Features(), "flag-key", ldstoretypes.SerializedItemDescriptor{
+		Version:        1,
+		SerializedItem: []byte(`{"key":"flag-key","version":1}`),
+	})
+
+	require.False(t, updated)
 	require.EqualError(t, err, `failed to update key "flag-key" in "features" after 10 attempts`)
-	require.Equal(t, maxRetries, pool.getCount, "Upsert should make exactly maxRetries attempts")
-	require.Zero(t, pool.activeCount)
-	for _, conn := range connections {
-		require.Equal(t, 1, conn.closeCount, "each connection should be closed exactly once")
-	}
+	require.Equal(t, maxRetries, conn.closeCount)
 }
 
-type singleActiveConnectionPool struct {
-	t              *testing.T
-	connections    []*upsertTestConn
-	getCount       int
-	activeCount    int
-	maxActiveCount int
-}
+type upsertTestPool struct{ conn *upsertTestConn }
 
-func (p *singleActiveConnectionPool) Get() r.Conn {
-	p.t.Helper()
-	require.Less(p.t, p.getCount, len(p.connections), "unexpected extra connection request")
-	require.Zero(p.t, p.activeCount, "Upsert requested another connection before closing the previous one")
-
-	conn := p.connections[p.getCount]
-	p.getCount++
-	p.activeCount++
-	if p.activeCount > p.maxActiveCount {
-		p.maxActiveCount = p.activeCount
-	}
-	conn.pool = p
-	return conn
-}
-
-func (p *singleActiveConnectionPool) Close() error { return nil }
+func (p *upsertTestPool) Get() r.Conn  { return p.conn }
+func (p *upsertTestPool) Close() error { return nil }
 
 type upsertTestConn struct {
-	pool       *singleActiveConnectionPool
-	watchErr   error
-	hgetReply  interface{}
-	hgetErr    error
-	hsetErr    error
-	execReply  interface{}
-	execErr    error
-	closeCount int
+	hgetReply   interface{}
+	hgetErr     error
+	scriptReply interface{}
+	scriptErr   error
+	command     string
+	args        []interface{}
+	closeCount  int
 }
 
 func (c *upsertTestConn) Close() error {
-	if c.closeCount == 0 {
-		c.pool.activeCount--
-	}
 	c.closeCount++
 	return nil
 }
 
 func (c *upsertTestConn) Err() error { return nil }
 
-func (c *upsertTestConn) Do(commandName string, _ ...interface{}) (interface{}, error) {
+func (c *upsertTestConn) Do(commandName string, args ...interface{}) (interface{}, error) {
 	switch commandName {
-	case "WATCH":
-		return "OK", c.watchErr
 	case "HGET":
 		if c.hgetReply == nil && c.hgetErr == nil {
 			return nil, r.ErrNil
 		}
 		return c.hgetReply, c.hgetErr
-	case "EXEC":
-		return c.execReply, c.execErr
+	case "EVALSHA":
+		c.command = commandName
+		c.args = args
+		return c.scriptReply, c.scriptErr
 	default:
 		return nil, fmt.Errorf("unexpected Do command %q", commandName)
 	}
 }
 
 func (c *upsertTestConn) Send(commandName string, _ ...interface{}) error {
-	switch commandName {
-	case "MULTI", "UNWATCH":
-		return nil
-	case "HSET":
-		return c.hsetErr
-	default:
-		return fmt.Errorf("unexpected Send command %q", commandName)
-	}
+	return fmt.Errorf("unexpected Send command %q", commandName)
 }
 
 func (c *upsertTestConn) Flush() error { return nil }
