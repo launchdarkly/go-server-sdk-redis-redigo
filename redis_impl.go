@@ -40,6 +40,15 @@ func newPool(url string, dialOptions []r.DialOption) *r.Pool {
 
 const initedKey = "$inited"
 
+// What the availability probe runs the script against in [UpsertModeAtomicScript]. The key holds no
+// data and the probe never creates it, because the script writes only when the field already holds
+// the value the caller expected, and no value the store stores can equal availabilityProbeValue.
+const (
+	probeKey               = "$availability"
+	availabilityProbeField = "probe"
+	availabilityProbeValue = "$not-a-stored-value"
+)
+
 // The maximum number of attempts Upsert will make before giving up. If the attempts run out, the
 // item was not written and an error is returned.
 //
@@ -444,11 +453,30 @@ func (store *redisDataStoreImpl) IsInitialized() bool {
 	return inited
 }
 
+// IsStoreAvailable reports whether the store can serve the operations the SDK needs from it. The SDK
+// calls this after an operation has failed, and treats the store as recovered as soon as it returns
+// true.
+//
+// The probe therefore has to exercise what Upsert needs. In [UpsertModeAtomicScript] that includes
+// permission to run the script, which a command such as EXISTS does not require: a server that
+// refuses scripting answers EXISTS happily while every Upsert fails, so the SDK would declare
+// recovery a few hundred milliseconds after each failure, restart the data source, write the whole
+// environment again, and fail again, without ever settling. Running the script instead makes the
+// store report itself unavailable and stay that way until scripting works.
 func (store *redisDataStoreImpl) IsStoreAvailable() bool {
 	c := store.getConn()
 	defer c.Close() // nolint:errcheck
-	_, err := r.Bool(c.Do("EXISTS", store.initedKey()))
-	return err == nil
+
+	if store.upsertMode == UpsertModeWatch {
+		_, err := r.Bool(c.Do("EXISTS", store.initedKey()))
+		return err == nil
+	}
+
+	// The script cannot write anything here: the expected value does not match what the field holds,
+	// and if it somehow did, the replacement is the same value.
+	reply, err := r.Values(upsertScript.Do(c, store.probeKey(), availabilityProbeField,
+		upsertExpectExisting, availabilityProbeValue, availabilityProbeValue))
+	return err == nil && len(reply) > 0
 }
 
 func (store *redisDataStoreImpl) Close() error {
@@ -461,6 +489,10 @@ func (store *redisDataStoreImpl) featuresKey(kind ldstoretypes.DataKind) string 
 
 func (store *redisDataStoreImpl) initedKey() string {
 	return store.prefix + ":" + initedKey
+}
+
+func (store *redisDataStoreImpl) probeKey() string {
+	return store.prefix + ":" + probeKey
 }
 
 func (store *redisDataStoreImpl) getConn() r.Conn {

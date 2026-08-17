@@ -403,18 +403,20 @@ func (p *singleActiveConnectionPool) Get() r.Conn {
 func (p *singleActiveConnectionPool) Close() error { return nil }
 
 type upsertTestConn struct {
-	pool       *singleActiveConnectionPool
-	commands   []string
-	watchErr   error
-	hgetReply  interface{}
-	hgetErr    error
-	hsetErr    error
-	execReply  interface{}
-	execErr    error
-	evalReply  interface{}
-	evalErr    error
-	evalArgs   []interface{}
-	closeCount int
+	pool        *singleActiveConnectionPool
+	commands    []string
+	watchErr    error
+	existsReply interface{}
+	existsErr   error
+	hgetReply   interface{}
+	hgetErr     error
+	hsetErr     error
+	execReply   interface{}
+	execErr     error
+	evalReply   interface{}
+	evalErr     error
+	evalArgs    []interface{}
+	closeCount  int
 }
 
 func (c *upsertTestConn) Close() error {
@@ -432,6 +434,8 @@ func (c *upsertTestConn) Do(commandName string, args ...interface{}) (interface{
 	switch commandName {
 	case "WATCH":
 		return "OK", c.watchErr
+	case "EXISTS":
+		return c.existsReply, c.existsErr
 	case "HGET":
 		if c.hgetReply == nil && c.hgetErr == nil {
 			return nil, r.ErrNil
