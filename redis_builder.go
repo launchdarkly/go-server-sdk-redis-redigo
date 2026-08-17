@@ -16,14 +16,62 @@ const (
 	DefaultPrefix = "launchdarkly"
 )
 
-// builderOptions holds the Redis connection settings that both builders accept. The setters are
-// shared by both builders so that each option behaves identically no matter which builder it was
-// set on.
+// UpsertMode selects how the data store updates a single item without losing a concurrent update of
+// another item.
+//
+// The default, [UpsertModeAtomicScript], is the right choice unless the Redis server refuses to run
+// Lua scripts. Refer to each mode for what it requires and how it behaves under concurrent updates.
+//
+// The modes differ in two ways. The one that matters is what happens when other items of the same
+// kind are updated at the same time: [UpsertModeWatch] can fail the update, and
+// [UpsertModeAtomicScript] cannot. Refer to each mode for the detail. The modes also differ in a
+// smaller way: under [UpsertModeWatch], an Init that rewrites an item with byte-identical content
+// makes an in-flight update of that item read the item again, and under [UpsertModeAtomicScript] it
+// does not. An update that succeeds stores the same bytes in either mode.
+type UpsertMode int
+
+const (
+	// UpsertModeAtomicScript compares and sets a single item with a Lua script. This is the default.
+	//
+	// Updates of different items never contend with each other, so an update is retried only when
+	// another client changes the same item during the attempt.
+	//
+	// This mode requires permission to run Lua scripts: the EVAL and EVALSHA commands, or the
+	// +@scripting ACL category. Nothing falls back to another mode if that permission is missing.
+	// Every update fails instead, and the store reports itself as unavailable until scripting is
+	// permitted. Use [UpsertModeWatch] for a server that cannot run scripts.
+	UpsertModeAtomicScript UpsertMode = iota
+
+	// UpsertModeWatch compares and sets with WATCH, MULTI, and EXEC, which is what version 3 of this
+	// package did. Choose it only where scripting is unavailable: a Redis user restricted to a
+	// command allowlist that omits +@scripting, or a Redis-protocol proxy that does not implement
+	// EVAL.
+	//
+	// WATCH covers the whole Redis hash that holds one kind of data rather than the individual item,
+	// so updating any item makes every in-flight update of that kind retry. A burst of updates to
+	// different items can exhaust those retries. The update then fails, the SDK reports the store as
+	// unavailable, and the data source restarts the stream to refresh the store, logging "Restarting
+	// stream to refresh data after data store outage". The store is not really down, so the next
+	// availability check succeeds and the SDK declares recovery. While the burst lasts, the failure
+	// and the restart repeat, and each refresh rewrites the whole data set, which adds more
+	// contention. [UpsertModeAtomicScript] does not have that failure mode, because updates of
+	// different items do not contend.
+	UpsertModeWatch
+)
+
+func (m UpsertMode) valid() bool {
+	return m == UpsertModeAtomicScript || m == UpsertModeWatch
+}
+
+// builderOptions holds the Redis settings that both builders accept, plus the data-store settings
+// that only [DataStoreBuilder] exposes. The setters are shared by both builders so that each option
+// behaves identically no matter which builder it was set on.
 type builderOptions struct {
 	prefix      string
 	pool        Pool
 	url         string
 	dialOptions []r.DialOption
+	upsertMode  UpsertMode
 }
 
 func defaultBuilderOptions() builderOptions {
@@ -158,8 +206,19 @@ func (b *DataStoreBuilder) DialOptions(options ...r.DialOption) *DataStoreBuilde
 	return b
 }
 
+// UpsertMode selects how the store updates a single item without losing a concurrent update of
+// another item. The default is [UpsertModeAtomicScript]. See [UpsertMode] for what each mode
+// requires of the Redis server.
+func (b *DataStoreBuilder) UpsertMode(mode UpsertMode) *DataStoreBuilder {
+	b.opts.upsertMode = mode
+	return b
+}
+
 // Build is called internally by the SDK.
 func (b *DataStoreBuilder) Build(context subsystems.ClientContext) (subsystems.PersistentDataStore, error) {
+	if !b.opts.upsertMode.valid() {
+		return nil, fmt.Errorf("unrecognized upsert mode %d", b.opts.upsertMode)
+	}
 	return newRedisDataStoreImpl(b.opts, context.GetLogging().Loggers), nil
 }
 

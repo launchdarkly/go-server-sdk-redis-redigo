@@ -1,10 +1,12 @@
 package ldredis
 
 import (
+	"reflect"
 	"testing"
 
 	r "github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/launchdarkly/go-server-sdk/v7/subsystems"
 )
@@ -53,6 +55,43 @@ func TestBigSegmentStoreBuilder(t *testing.T) {
 		poolInterface: (*BigSegmentStoreBuilder).PoolInterface,
 		prefix:        (*BigSegmentStoreBuilder).Prefix,
 		url:           (*BigSegmentStoreBuilder).URL,
+	})
+}
+
+func TestDataStoreBuilderUpsertMode(t *testing.T) {
+	t.Run("defaults to the atomic script", func(t *testing.T) {
+		assert.Equal(t, UpsertModeAtomicScript, DataStore().opts.upsertMode)
+	})
+
+	t.Run("selects the mode it is given", func(t *testing.T) {
+		b := DataStore().UpsertMode(UpsertModeWatch)
+		assert.Equal(t, UpsertModeWatch, b.opts.upsertMode)
+
+		b.UpsertMode(UpsertModeAtomicScript)
+		assert.Equal(t, UpsertModeAtomicScript, b.opts.upsertMode)
+	})
+
+	t.Run("reaches the store", func(t *testing.T) {
+		for _, mode := range []UpsertMode{UpsertModeAtomicScript, UpsertModeWatch} {
+			store, err := DataStore().UpsertMode(mode).Build(subsystems.BasicClientContext{})
+			require.NoError(t, err)
+			defer store.Close() //nolint:errcheck // test cleanup
+			assert.Equal(t, mode, store.(*redisDataStoreImpl).upsertMode)
+		}
+	})
+
+	t.Run("refuses an unrecognized mode", func(t *testing.T) {
+		// A mode nobody defined would otherwise silently pick one of the implementations.
+		store, err := DataStore().UpsertMode(UpsertMode(99)).Build(subsystems.BasicClientContext{})
+		assert.Nil(t, store)
+		assert.EqualError(t, err, "unrecognized upsert mode 99")
+	})
+
+	t.Run("is not an option on the Big Segment store", func(t *testing.T) {
+		// Something that must not compile cannot be asserted at compile time, so assert that the
+		// method is absent from the type instead.
+		_, found := reflect.TypeOf(&BigSegmentStoreBuilder{}).MethodByName("UpsertMode")
+		assert.False(t, found, "the upsert mode applies only to the data store")
 	})
 }
 
