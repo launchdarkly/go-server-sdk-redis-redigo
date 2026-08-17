@@ -75,24 +75,42 @@ func TestWatchUpsertReturnsConnectionOnErrors(t *testing.T) {
 	}
 }
 
-func TestWatchUpsertDoesNotDeleteNewerItem(t *testing.T) {
-	conn := &upsertTestConn{hgetReply: []byte("existing")}
-	pool := &singleActiveConnectionPool{t: t, connections: []*upsertTestConn{conn}}
-	mockLog := ldlogtest.NewMockLog()
-	mockLog.Loggers.SetMinLevel(ldlog.Debug)
-	store := newUpsertTestStore(pool, UpsertModeWatch, mockLog.Loggers)
+func TestUpsertDoesNotOverwriteAnEqualOrNewerItem(t *testing.T) {
+	const storedVersion = 2
 
-	updated, err := store.Upsert(fixedVersionKind{version: 2}, "flag-key", ldstoretypes.SerializedItemDescriptor{
-		Version:        1,
-		Deleted:        true,
-		SerializedItem: []byte("new"),
-	})
+	versions := []struct {
+		name       string
+		newVersion int
+	}{
+		{name: "older", newVersion: storedVersion - 1},
+		{name: "equal", newVersion: storedVersion},
+	}
 
-	require.NoError(t, err)
-	require.False(t, updated)
-	require.Equal(t, 1, conn.closeCount)
-	mockLog.AssertMessageMatch(t, true, ldlog.Debug,
-		"Attempted to delete key: flag-key version: 2 .* with a version that is the same or older: 1")
+	for _, m := range upsertModes {
+		for _, version := range versions {
+			t.Run(fmt.Sprintf("%s/%s", m.name, version.name), func(t *testing.T) {
+				conn := &upsertTestConn{hgetReply: []byte("existing")}
+				pool := &singleActiveConnectionPool{t: t, connections: []*upsertTestConn{conn}}
+				mockLog := ldlogtest.NewMockLog()
+				mockLog.Loggers.SetMinLevel(ldlog.Debug)
+				store := newUpsertTestStore(pool, m.mode, mockLog.Loggers)
+
+				updated, err := store.Upsert(fixedVersionKind{version: storedVersion}, "flag-key",
+					ldstoretypes.SerializedItemDescriptor{
+						Version:        version.newVersion,
+						Deleted:        true,
+						SerializedItem: []byte("new"),
+					})
+
+				require.NoError(t, err)
+				require.False(t, updated)
+				require.Equal(t, 1, conn.closeCount)
+				mockLog.AssertMessageMatch(t, true, ldlog.Debug, fmt.Sprintf(
+					"Attempted to delete key: flag-key version: %d .* with a version that is the same or older: %d",
+					storedVersion, version.newVersion))
+			})
+		}
+	}
 }
 
 func TestWatchUpsertReturnsExecError(t *testing.T) {
@@ -246,13 +264,10 @@ func TestScriptUpsertRequiresAbsenceAfterTheItemDisappears(t *testing.T) {
 func TestScriptUpsertDoesNotRunTheScriptForAnOlderVersion(t *testing.T) {
 	conn := &upsertTestConn{hgetReply: []byte("existing")}
 	pool := &singleActiveConnectionPool{t: t, connections: []*upsertTestConn{conn}}
-	mockLog := ldlogtest.NewMockLog()
-	mockLog.Loggers.SetMinLevel(ldlog.Debug)
-	store := newUpsertTestStore(pool, UpsertModeAtomicScript, mockLog.Loggers)
+	store := newUpsertTestStore(pool, UpsertModeAtomicScript, ldlog.NewDisabledLoggers())
 
 	updated, err := store.Upsert(fixedVersionKind{version: 2}, "flag-key", ldstoretypes.SerializedItemDescriptor{
 		Version:        1,
-		Deleted:        true,
 		SerializedItem: []byte("new"),
 	})
 
@@ -260,8 +275,6 @@ func TestScriptUpsertDoesNotRunTheScriptForAnOlderVersion(t *testing.T) {
 	require.False(t, updated)
 	require.Equal(t, []string{"HGET"}, conn.commands, "an older version must not reach the script")
 	require.Equal(t, 1, conn.closeCount)
-	mockLog.AssertMessageMatch(t, true, ldlog.Debug,
-		"Attempted to delete key: flag-key version: 2 .* with a version that is the same or older: 1")
 }
 
 func TestScriptUpsertReturnsConnectionOnErrors(t *testing.T) {
