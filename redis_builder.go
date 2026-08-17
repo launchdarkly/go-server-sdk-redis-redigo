@@ -207,8 +207,13 @@ func (b *DataStoreBuilder) DialOptions(options ...r.DialOption) *DataStoreBuilde
 }
 
 // UpsertMode selects how the store updates a single item without losing a concurrent update of
-// another item. The default is [UpsertModeAtomicScript]. See [UpsertMode] for what each mode
-// requires of the Redis server.
+// another item. The default is [UpsertModeAtomicScript], which needs permission to run Lua scripts on
+// the Redis server. [UpsertModeWatch] does not, and is what version 3 of this package did.
+//
+// A store using [UpsertModeWatch] that logs failed updates and "Restarting stream to refresh data
+// after data store outage" while flags are being changed is showing the contention this option exists
+// to remove; the default mode does not have that failure mode. See [UpsertMode] for what each mode
+// requires and how each behaves.
 func (b *DataStoreBuilder) UpsertMode(mode UpsertMode) *DataStoreBuilder {
 	b.opts.upsertMode = mode
 	return b
