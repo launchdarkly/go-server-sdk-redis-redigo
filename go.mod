@@ -1,4 +1,4 @@
-module github.com/launchdarkly/go-server-sdk-redis-redigo/v3
+module github.com/launchdarkly/go-server-sdk-redis-redigo/v4
 
 go 1.24.0
 
@@ -27,5 +27,3 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-retract v3.0.3 // Introduced unintentional breaking changes; use version v3.0.4 or later.
