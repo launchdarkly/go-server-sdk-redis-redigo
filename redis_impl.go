@@ -15,6 +15,7 @@ import (
 type redisDataStoreImpl struct {
 	prefix     string
 	pool       Pool
+	upsertMode UpsertMode
 	loggers    ldlog.Loggers
 	testTxHook func()
 }
@@ -39,20 +40,69 @@ func newPool(url string, dialOptions []r.DialOption) *r.Pool {
 
 const initedKey = "$inited"
 
-// The maximum number of attempts Upsert will make before giving up. WATCH covers the entire
-// hash for a data kind rather than the individual item key, so every concurrent update of that
-// kind contends on the same key; without a limit a caller can be starved indefinitely during a
-// burst of updates. This matches the limit used by the go-redis implementation of this store.
+// The maximum number of attempts Upsert will make before giving up. If the attempts run out, the
+// item was not written and an error is returned.
+//
+// What forces a retry depends on the mode. [UpsertModeAtomicScript] retries only when another client
+// changes the same item during the attempt, and the version check settles that case first, so the
+// limit is not reached in practice. [UpsertModeWatch] watches the entire hash for a data kind rather
+// than the individual item key, so every concurrent update of that kind contends on the same key,
+// and a burst of updates to different items can exhaust the limit. Refer to [UpsertModeWatch] for
+// what the SDK does with the error. Without a limit a caller could be starved indefinitely during
+// such a burst. This matches the limit used by the go-redis implementation of this store.
 const maxRetries = 10
+
+// The values Upsert passes to the script in ARGV[2] to say whether it read a value for the item.
+// These are explicit strings rather than a Go bool because the script compares against the string
+// literal '1', and how a bool reaches the wire is up to the Redis client.
+const (
+	upsertExpectExisting = "1"
+	upsertExpectAbsent   = "0"
+)
+
+// The statuses the script returns in the first element of its reply.
+const (
+	upsertStatusOK   = "OK"   // the item was written
+	upsertStatusNoop = "NOOP" // the item had changed since Upsert read it, so nothing was written
+)
+
+// upsertScript replaces one field of a Redis hash, but only if the field still holds the value that
+// Upsert read. Comparing the raw value keeps the script independent of how the SDK serializes an
+// item: the format is not guaranteed to be JSON, and does not have to expose the version anywhere
+// the script could read it.
+//
+// ARGV[2] is upsertExpectExisting when Upsert read a value for the item, and upsertExpectAbsent when
+// it read none. When the script refuses to write, it returns the value it found, so the retry does
+// not need to read the item again.
+//
+// If the server has forgotten the script, redigo recovers by matching the "NOSCRIPT " prefix of the
+// server error and resending the script body with EVAL. A Redis-protocol proxy that rewords that
+// error defeats the fallback, and Upsert then fails with the reworded error.
+var upsertScript = r.NewScript(1, `
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+local expected = false
+if ARGV[2] == '1' then
+    expected = ARGV[3]
+end
+if current ~= expected then
+    if current == false then
+        return {'NOOP'}
+    end
+    return {'NOOP', current}
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[4])
+return {'OK'}
+`)
 
 func newRedisDataStoreImpl(
 	builder builderOptions,
 	loggers ldlog.Loggers,
 ) *redisDataStoreImpl {
 	impl := &redisDataStoreImpl{
-		prefix:  builder.prefix,
-		pool:    builder.pool,
-		loggers: loggers,
+		prefix:     builder.prefix,
+		pool:       builder.pool,
+		upsertMode: builder.upsertMode,
+		loggers:    loggers,
 	}
 	impl.loggers.SetPrefix("RedisDataStore:")
 
@@ -152,30 +202,159 @@ func (store *redisDataStoreImpl) GetAll(
 	return results, nil
 }
 
-// Upsert retries the update as long as another client keeps modifying the watched key, up to
-// maxRetries attempts. If the attempts run out, the item was not written and an error is returned
-// so that the SDK can treat the store as unavailable and refresh it once it recovers.
+// Upsert writes the item unless the store already holds that item at the same or a newer version.
+// Reading the current version and writing the new one have to be atomic with respect to other
+// clients; how that is achieved depends on the configured mode. See [UpsertMode].
 func (store *redisDataStoreImpl) Upsert(
+	kind ldstoretypes.DataKind,
+	key string,
+	newItem ldstoretypes.SerializedItemDescriptor,
+) (bool, error) {
+	if store.upsertMode == UpsertModeWatch {
+		return store.upsertWithWatch(kind, key, newItem)
+	}
+	return store.upsertWithScript(kind, key, newItem)
+}
+
+// upsertWithScript retries the update as long as another client keeps changing the same item, up to
+// maxRetries attempts. Every refusal carries the value the script found, so only the first attempt
+// has to read the item.
+func (store *redisDataStoreImpl) upsertWithScript(
+	kind ldstoretypes.DataKind,
+	key string,
+	newItem ldstoretypes.SerializedItemDescriptor,
+) (bool, error) {
+	var known *ldstoretypes.SerializedItemDescriptor
+	for range maxRetries {
+		updated, refused, err := store.tryUpsertWithScript(kind, key, newItem, known)
+		if err != nil || refused == nil {
+			return updated, err
+		}
+		known = refused
+	}
+	return false, upsertRetriesExhaustedError(kind, key)
+}
+
+// tryUpsertWithScript makes a single attempt at the compare-and-set, acquiring its own connection
+// from the pool and returning it to the pool before the attempt ends. If known is nil, the attempt
+// starts by reading the item; otherwise it compares against the value it was given, which is what
+// makes a retry cost one round trip instead of two.
+//
+// A non-nil refused is the value the script found when it declined to write, and means the caller
+// should try again with that value; updated and err are not meaningful in that case.
+func (store *redisDataStoreImpl) tryUpsertWithScript(
+	kind ldstoretypes.DataKind,
+	key string,
+	newItem ldstoretypes.SerializedItemDescriptor,
+	known *ldstoretypes.SerializedItemDescriptor,
+) (updated bool, refused *ldstoretypes.SerializedItemDescriptor, err error) {
+	c := store.getConn()
+	defer c.Close() // nolint:errcheck
+
+	var oldItem ldstoretypes.SerializedItemDescriptor
+	if known == nil {
+		oldItem, err = store.getWithConn(c, kind, key)
+		if err != nil {
+			return false, nil, err
+		}
+	} else {
+		oldItem = *known
+	}
+
+	if !store.isNewerVersion(kind, key, oldItem, newItem) {
+		return false, nil, nil
+	}
+
+	if store.testTxHook != nil { // instrumentation for unit tests
+		store.testTxHook()
+	}
+
+	updated, observed, err := store.runUpsertScript(c, kind, key, oldItem, newItem)
+	if err != nil {
+		return false, nil, err
+	}
+	if updated {
+		return true, nil, nil
+	}
+
+	if store.loggers.IsDebugEnabled() {
+		store.loggers.Debug("Concurrent modification of the same item detected, retrying")
+	}
+	return false, &observed, nil
+}
+
+// runUpsertScript runs the compare-and-set. When the script declines to write, observed is the value
+// the item held at that moment, which the next attempt compares against instead of reading again.
+func (store *redisDataStoreImpl) runUpsertScript(
+	c r.Conn,
+	kind ldstoretypes.DataKind,
+	key string,
+	oldItem ldstoretypes.SerializedItemDescriptor,
+	newItem ldstoretypes.SerializedItemDescriptor,
+) (updated bool, observed ldstoretypes.SerializedItemDescriptor, err error) {
+	expected := upsertExpectAbsent
+	if oldItem.SerializedItem != nil {
+		expected = upsertExpectExisting
+	}
+
+	reply, err := r.Values(upsertScript.Do(c, store.featuresKey(kind), key,
+		expected, oldItem.SerializedItem, newItem.SerializedItem))
+	if err != nil {
+		return false, observed, err
+	}
+	if len(reply) == 0 {
+		return false, observed, fmt.Errorf("upsert of key %q in %q got an empty reply from Redis",
+			key, kind.GetName())
+	}
+
+	status, err := r.String(reply[0], nil)
+	if err != nil {
+		return false, observed, fmt.Errorf("upsert of key %q in %q got an unreadable status from Redis: %w",
+			key, kind.GetName(), err)
+	}
+
+	switch status {
+	case upsertStatusOK:
+		return true, observed, nil
+	case upsertStatusNoop:
+		if len(reply) < 2 || reply[1] == nil {
+			// The item no longer exists, so the next attempt should create it.
+			return false, ldstoretypes.SerializedItemDescriptor{}.NotFound(), nil
+		}
+		value, err := r.Bytes(reply[1], nil)
+		if err != nil {
+			return false, observed, fmt.Errorf("upsert of key %q in %q got an unreadable value from Redis: %w",
+				key, kind.GetName(), err)
+		}
+		return false, ldstoretypes.SerializedItemDescriptor{Version: 0, SerializedItem: value}, nil
+	default:
+		return false, observed, fmt.Errorf("upsert of key %q in %q got unexpected status %q from Redis",
+			key, kind.GetName(), status)
+	}
+}
+
+// upsertWithWatch retries the update as long as another client keeps modifying the watched key, up
+// to maxRetries attempts.
+func (store *redisDataStoreImpl) upsertWithWatch(
 	kind ldstoretypes.DataKind,
 	key string,
 	newItem ldstoretypes.SerializedItemDescriptor,
 ) (bool, error) {
 	baseKey := store.featuresKey(kind)
 	for range maxRetries {
-		updated, retry, err := store.tryUpsert(kind, key, baseKey, newItem)
+		updated, retry, err := store.tryUpsertWithWatch(kind, key, baseKey, newItem)
 		if !retry {
 			return updated, err
 		}
 	}
-	return false, fmt.Errorf("failed to update key %q in %q after %d attempts",
-		key, kind.GetName(), maxRetries)
+	return false, upsertRetriesExhaustedError(kind, key)
 }
 
-// tryUpsert makes a single attempt at the optimistic-concurrency update, acquiring its own
+// tryUpsertWithWatch makes a single attempt at the optimistic-concurrency update, acquiring its own
 // connection from the pool and returning it to the pool before the attempt ends. If retry is
 // true, the watched key was modified by another client before the transaction committed and the
 // caller should try again; updated and err are not meaningful in that case.
-func (store *redisDataStoreImpl) tryUpsert(
+func (store *redisDataStoreImpl) tryUpsertWithWatch(
 	kind ldstoretypes.DataKind,
 	key string,
 	baseKey string,
@@ -200,22 +379,7 @@ func (store *redisDataStoreImpl) tryUpsert(
 		return false, false, err
 	}
 
-	// In this implementation, we have to parse the existing item in order to determine its version.
-	oldVersion := oldItem.Version
-	if oldItem.SerializedItem != nil {
-		parsed, _ := kind.Deserialize(oldItem.SerializedItem)
-		oldVersion = parsed.Version
-	}
-
-	if oldVersion >= newItem.Version {
-		updateOrDelete := "update"
-		if newItem.Deleted {
-			updateOrDelete = "delete"
-		}
-		if store.loggers.IsDebugEnabled() {
-			store.loggers.Debugf(`Attempted to %s key: %s version: %d in "%s" with a version that is the same or older: %d`,
-				updateOrDelete, key, oldVersion, kind, newItem.Version)
-		}
+	if !store.isNewerVersion(kind, key, oldItem, newItem) {
 		return false, false, nil
 	}
 
@@ -237,6 +401,40 @@ func (store *redisDataStoreImpl) tryUpsert(
 		return true, false, nil
 	}
 	return false, false, err
+}
+
+// isNewerVersion reports whether newItem should replace what the store currently holds. In this
+// implementation the version is part of the serialized item, so finding the current version means
+// parsing the value that was read.
+func (store *redisDataStoreImpl) isNewerVersion(
+	kind ldstoretypes.DataKind,
+	key string,
+	oldItem ldstoretypes.SerializedItemDescriptor,
+	newItem ldstoretypes.SerializedItemDescriptor,
+) bool {
+	oldVersion := oldItem.Version
+	if oldItem.SerializedItem != nil {
+		parsed, _ := kind.Deserialize(oldItem.SerializedItem)
+		oldVersion = parsed.Version
+	}
+	if oldVersion < newItem.Version {
+		return true
+	}
+
+	if store.loggers.IsDebugEnabled() {
+		updateOrDelete := "update"
+		if newItem.Deleted {
+			updateOrDelete = "delete"
+		}
+		store.loggers.Debugf(`Attempted to %s key: %s version: %d in "%s" with a version that is the same or older: %d`,
+			updateOrDelete, key, oldVersion, kind, newItem.Version)
+	}
+	return false
+}
+
+func upsertRetriesExhaustedError(kind ldstoretypes.DataKind, key string) error {
+	return fmt.Errorf("failed to update key %q in %q after %d attempts",
+		key, kind.GetName(), maxRetries)
 }
 
 func (store *redisDataStoreImpl) IsInitialized() bool {
