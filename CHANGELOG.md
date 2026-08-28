@@ -2,6 +2,27 @@
 
 All notable changes to the LaunchDarkly Go SDK Redis integration will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [4.0.0](https://github.com/launchdarkly/go-server-sdk-redis-redigo/compare/v3.0.5...v4.0.0) (2026-08-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* Compare and set one item atomically by default ([#56](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/56))
+* Split StoreBuilder into DataStoreBuilder and BigSegmentStoreBuilder ([#55](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/55))
+* Move module path to v4 ([#54](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/54))
+
+### Features
+
+* Compare and set one item atomically by default ([#56](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/56)) ([8f8b901](https://github.com/launchdarkly/go-server-sdk-redis-redigo/commit/8f8b901f3b7d2d6c67f4e4f83d2d8cb7676f72e4))
+* Move module path to v4 ([#54](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/54)) ([ee7948d](https://github.com/launchdarkly/go-server-sdk-redis-redigo/commit/ee7948d56aa037a7217253c1d6dc77b08b31a4a7))
+* Split StoreBuilder into DataStoreBuilder and BigSegmentStoreBuilder ([#55](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/55)) ([20a9fb1](https://github.com/launchdarkly/go-server-sdk-redis-redigo/commit/20a9fb14e2d06f349b48d430ab5680adf5ba0cb1))
+
+
+### Bug Fixes
+
+* Probe the script when checking store availability ([#57](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/57)) ([b6d9a58](https://github.com/launchdarkly/go-server-sdk-redis-redigo/commit/b6d9a58853c308b13ce881eff646398af956afe0))
+* Stop logging a Redis URL that cannot be parsed ([#61](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/61)) ([6decd27](https://github.com/launchdarkly/go-server-sdk-redis-redigo/commit/6decd27fedb4699a41ba2c30d4ca4f150dc5bfc5))
+
 ## [3.0.5](https://github.com/launchdarkly/go-server-sdk-redis-redigo/compare/v3.0.4...v3.0.5) (2026-08-06)
 
 
