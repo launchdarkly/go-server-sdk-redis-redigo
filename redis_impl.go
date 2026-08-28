@@ -123,11 +123,29 @@ func newRedisDataStoreImpl(
 }
 
 func logRedisURL(loggers ldlog.Loggers, redisURL string) {
-	if parsed, err := url.Parse(redisURL); err == nil {
-		loggers.Infof("Using URL: %s", parsed.Redacted())
-	} else {
-		loggers.Errorf("Invalid Redis URL: %s", redisURL) // we can assume that the Redis client will also fail
+	// Only the host is logged. A password can end up in User, Path, RawQuery, Fragment or
+	// Opaque, but never in Host, because Host is what is left of the authority once the
+	// userinfo is stripped. Logging the host alone therefore cannot disclose a password, by
+	// construction rather than by best effort.
+	//
+	// url.Redacted is not enough. It only hides the password of a URL that has an authority
+	// component, and cheap tests for that subset keep missing cases. A URL with no "//" parses
+	// as opaque, and a scheme followed by a single slash is hierarchical with an empty Opaque,
+	// yet neither has an authority. In both the credentials land outside User, so Redacted
+	// reports them in full. A non-empty Host is the one condition that says an authority was
+	// parsed.
+	//
+	// One shape stays imperfect. A password holding an unescaped "@" followed by an unescaped
+	// "/" ends the authority early, so the host read here is a fragment of the intended
+	// password. That URL is well formed and genuinely reads as that host, so nothing can tell
+	// the two intents apart. The rest of the password still stays out of the log.
+	if parsed, err := url.Parse(redisURL); err == nil && parsed.Host != "" {
+		loggers.Infof("Using Redis host %s", parsed.Host)
+		return
 	}
+	// The URL is left out of this message on purpose, and so is the parse error, because the
+	// error quotes the whole URL. We can assume that the Redis client will also fail.
+	loggers.Error("Could not read a host from the Redis URL. The URL is not logged because it may contain a password.")
 }
 
 func (store *redisDataStoreImpl) Init(allData []ldstoretypes.SerializedCollection) error {
