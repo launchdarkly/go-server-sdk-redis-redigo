@@ -37,4 +37,9 @@
 // other data as long as you are not using the same keys. By default, the keys used by the
 // data store will always start with "launchdarkly:"; you can change this to another
 // prefix if desired.
+//
+// Updating one flag without losing a concurrent update of another flag requires permission to run Lua
+// scripts on the Redis server: the EVAL and EVALSHA commands, or the +@scripting ACL category. A
+// server that cannot run scripts needs [UpsertModeWatch], which [DataStoreBuilder.UpsertMode] selects
+// and [UpsertMode] describes.
 package ldredis
