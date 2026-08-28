@@ -9,27 +9,66 @@ import (
 	r "github.com/gomodule/redigo/redis"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/subsystems"
+	"github.com/launchdarkly/go-server-sdk/v7/subsystems/ldstoretypes"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/storetest"
 )
 
 const redisURL = "redis://localhost:6379"
 
+// Every mode has to satisfy the whole store contract, so the tests that are not about a specific
+// mode run once for each of them.
+var upsertModes = []struct {
+	name string
+	mode UpsertMode
+}{
+	{name: "atomic script", mode: UpsertModeAtomicScript},
+	{name: "watch", mode: UpsertModeWatch},
+}
+
 func TestRedisDataStore(t *testing.T) {
-	storetest.NewPersistentDataStoreTestSuite(makeTestStore, clearTestData).
-		ErrorStoreFactory(makeFailedStore(), verifyFailedStoreError).
-		ConcurrentModificationHook(setConcurrentModificationHook).
-		Run(t)
+	for _, m := range upsertModes {
+		t.Run(m.name, func(t *testing.T) {
+			storetest.NewPersistentDataStoreTestSuite(makeTestStore(m.mode), clearTestData).
+				ErrorStoreFactory(makeFailedStore(m.mode), verifyFailedStoreError).
+				ConcurrentModificationHook(setConcurrentModificationHook).
+				Run(t)
+		})
+	}
 }
 
-func makeTestStore(prefix string) subsystems.ComponentConfigurer[subsystems.PersistentDataStore] {
-	return DataStore().Prefix(prefix)
+func makeTestStore(mode UpsertMode) func(string) subsystems.ComponentConfigurer[subsystems.PersistentDataStore] {
+	return func(prefix string) subsystems.ComponentConfigurer[subsystems.PersistentDataStore] {
+		return DataStore().Prefix(prefix).UpsertMode(mode)
+	}
 }
 
-func makeFailedStore() subsystems.ComponentConfigurer[subsystems.PersistentDataStore] {
+func makeFailedStore(mode UpsertMode) subsystems.ComponentConfigurer[subsystems.PersistentDataStore] {
 	// Here we ensure that all Redis operations will fail by using an invalid hostname.
-	return DataStore().URL("redis://not-a-real-host")
+	return DataStore().URL("redis://not-a-real-host").UpsertMode(mode)
+}
+
+// newTestStore builds a store that talks to the real Redis server, for the tests that need to
+// interleave operations from more than one client or to inspect the keys themselves.
+func newTestStore(t *testing.T, prefix string, mode UpsertMode) *redisDataStoreImpl {
+	t.Helper()
+	store := newRedisDataStoreImpl(
+		builderOptions{prefix: prefix, url: redisURL, upsertMode: mode},
+		ldlog.NewDisabledLoggers(),
+	)
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+// serializedFlag builds an item of about valueSize bytes. The size matters because both modes send
+// the item over the wire, and the script sends the value it expects to find as well.
+func serializedFlag(key string, version int, valueSize int) ldstoretypes.SerializedItemDescriptor {
+	paddingSize := max(0, valueSize-len(key)-64)
+	serialized := fmt.Appendf(nil, `{"key":%q,"version":%d,"padding":"%0*s"}`,
+		key, version, paddingSize, "")
+	return ldstoretypes.SerializedItemDescriptor{Version: version, SerializedItem: serialized}
 }
 
 func verifyFailedStoreError(t assert.TestingT, err error) {
