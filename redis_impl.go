@@ -39,10 +39,23 @@ func newPool(url string, dialOptions []r.DialOption) *r.Pool {
 
 const initedKey = "$inited"
 
-// The maximum number of attempts Upsert will make before giving up. WATCH covers the entire
-// hash for a data kind rather than the individual item key, so every concurrent update of that
-// kind contends on the same key; without a limit a caller can be starved indefinitely during a
-// burst of updates. This matches the limit used by the go-redis implementation of this store.
+// upsertScript atomically replaces one hash field only if it still has the value that Upsert read.
+// Comparing the raw value keeps the script independent of the SDK's serialization format.
+var upsertScript = r.NewScript(1, `
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if ARGV[2] == '1' then
+    if current ~= ARGV[3] then
+        return 0
+    end
+elseif current then
+    return 0
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[4])
+return 1
+`)
+
+// The maximum number of attempts Upsert will make when another client concurrently changes the
+// same item. Updates to other items in the same Redis hash do not cause retries.
 const maxRetries = 10
 
 func newRedisDataStoreImpl(
@@ -152,17 +165,13 @@ func (store *redisDataStoreImpl) GetAll(
 	return results, nil
 }
 
-// Upsert retries the update as long as another client keeps modifying the watched key, up to
-// maxRetries attempts. If the attempts run out, the item was not written and an error is returned
-// so that the SDK can treat the store as unavailable and refresh it once it recovers.
 func (store *redisDataStoreImpl) Upsert(
 	kind ldstoretypes.DataKind,
 	key string,
 	newItem ldstoretypes.SerializedItemDescriptor,
 ) (bool, error) {
-	baseKey := store.featuresKey(kind)
 	for range maxRetries {
-		updated, retry, err := store.tryUpsert(kind, key, baseKey, newItem)
+		updated, retry, err := store.tryUpsert(kind, key, newItem)
 		if !retry {
 			return updated, err
 		}
@@ -171,72 +180,52 @@ func (store *redisDataStoreImpl) Upsert(
 		key, kind.GetName(), maxRetries)
 }
 
-// tryUpsert makes a single attempt at the optimistic-concurrency update, acquiring its own
-// connection from the pool and returning it to the pool before the attempt ends. If retry is
-// true, the watched key was modified by another client before the transaction committed and the
-// caller should try again; updated and err are not meaningful in that case.
 func (store *redisDataStoreImpl) tryUpsert(
 	kind ldstoretypes.DataKind,
 	key string,
-	baseKey string,
 	newItem ldstoretypes.SerializedItemDescriptor,
 ) (updated bool, retry bool, err error) {
 	c := store.getConn()
 	defer c.Close() // nolint:errcheck
 
-	_, err = c.Do("WATCH", baseKey)
-	if err != nil {
-		return false, false, err
-	}
-
-	defer c.Send("UNWATCH") // nolint:errcheck // this should always succeed
-
-	if store.testTxHook != nil { // instrumentation for unit tests
-		store.testTxHook()
-	}
-
 	oldItem, err := store.getWithConn(c, kind, key)
 	if err != nil {
 		return false, false, err
 	}
-
-	// In this implementation, we have to parse the existing item in order to determine its version.
 	oldVersion := oldItem.Version
-	if oldItem.SerializedItem != nil {
+	oldExists := oldItem.SerializedItem != nil
+	if oldExists {
 		parsed, _ := kind.Deserialize(oldItem.SerializedItem)
 		oldVersion = parsed.Version
 	}
-
 	if oldVersion >= newItem.Version {
-		updateOrDelete := "update"
-		if newItem.Deleted {
-			updateOrDelete = "delete"
-		}
 		if store.loggers.IsDebugEnabled() {
+			updateOrDelete := "update"
+			if newItem.Deleted {
+				updateOrDelete = "delete"
+			}
 			store.loggers.Debugf(`Attempted to %s key: %s version: %d in "%s" with a version that is the same or older: %d`,
 				updateOrDelete, key, oldVersion, kind, newItem.Version)
 		}
 		return false, false, nil
 	}
 
-	_ = c.Send("MULTI")
-	err = c.Send("HSET", baseKey, key, newItem.SerializedItem)
-	if err == nil {
-		var result interface{}
-		result, err = c.Do("EXEC")
-		if err != nil {
-			return false, false, err
-		}
-		if result == nil {
-			// if exec returned nothing, it means the watch was triggered and we should retry
-			if store.loggers.IsDebugEnabled() {
-				store.loggers.Debug("Concurrent modification detected, retrying")
-			}
-			return false, true, nil
-		}
-		return true, false, nil
+	if store.testTxHook != nil { // instrumentation for unit tests
+		store.testTxHook()
 	}
-	return false, false, err
+
+	updated, err = r.Bool(upsertScript.Do(c, store.featuresKey(kind), key,
+		oldExists, oldItem.SerializedItem, newItem.SerializedItem))
+	if err != nil {
+		return false, false, err
+	}
+	if !updated {
+		if store.loggers.IsDebugEnabled() {
+			store.loggers.Debug("Concurrent modification of the same item detected, retrying")
+		}
+		return false, true, nil
+	}
+	return true, false, nil
 }
 
 func (store *redisDataStoreImpl) IsInitialized() bool {
