@@ -227,8 +227,10 @@ func (b *DataStoreBuilder) Build(context subsystems.ClientContext) (subsystems.P
 	return newRedisDataStoreImpl(b.opts, context.GetLogging().Loggers), nil
 }
 
+var _ subsystems.DiagnosticDescription = &DataStoreBuilder{}
+
 // DescribeConfiguration is used internally by the SDK to inspect the configuration.
-func (b *DataStoreBuilder) DescribeConfiguration() ldvalue.Value {
+func (b *DataStoreBuilder) DescribeConfiguration(context subsystems.ClientContext) ldvalue.Value {
 	return ldvalue.String("Redis")
 }
 
@@ -333,8 +335,10 @@ func (b *BigSegmentStoreBuilder) Build(context subsystems.ClientContext) (subsys
 	return newRedisBigSegmentStoreImpl(b.opts, context.GetLogging().Loggers), nil
 }
 
+var _ subsystems.DiagnosticDescription = &BigSegmentStoreBuilder{}
+
 // DescribeConfiguration is used internally by the SDK to inspect the configuration.
-func (b *BigSegmentStoreBuilder) DescribeConfiguration() ldvalue.Value {
+func (b *BigSegmentStoreBuilder) DescribeConfiguration(context subsystems.ClientContext) ldvalue.Value {
 	return ldvalue.String("Redis")
 }
 
