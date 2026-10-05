@@ -1,8 +1,10 @@
 package ldredis
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	r "github.com/gomodule/redigo/redis"
@@ -30,12 +32,47 @@ func newPool(url string, dialOptions []r.DialOption) *r.Pool {
 			c, err = r.DialURL(url, dialOptions...)
 			return
 		},
-		TestOnBorrow: func(c r.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
-		},
+		TestOnBorrow: (&borrowTester{idleThreshold: borrowTestIdleThreshold}).test,
 	}
 	return pool
+}
+
+// The pool does not test a connection that was returned to it more recently than this.
+const borrowTestIdleThreshold = time.Minute
+
+var errIdleSinceFailedBorrowTest = errors.New("connection was idle when a borrow test failed")
+
+// borrowTester tests an idle connection before the pool lends it out.
+//
+// The pool tests its idle connections one at a time, and a PING to a stalled server waits for the full
+// read timeout. Thus, if every idle connection got a PING, a stalled server would hold the borrower for
+// one read timeout per idle connection. To prevent this, the tester records when a PING fails. It then
+// rejects each connection that was idle since before that failure, and it does not send a PING to it.
+// The pool closes a rejected connection and tries the next one, or dials a new one.
+type borrowTester struct {
+	idleThreshold time.Duration // The tester accepts a connection without a test if it was idle for less than this.
+
+	mu          sync.Mutex
+	lastFailure time.Time
+}
+
+func (b *borrowTester) test(c r.Conn, returnedAt time.Time) error {
+	if time.Since(returnedAt) < b.idleThreshold {
+		return nil
+	}
+	b.mu.Lock()
+	idleSinceFailure := returnedAt.Before(b.lastFailure)
+	b.mu.Unlock()
+	if idleSinceFailure {
+		return errIdleSinceFailedBorrowTest
+	}
+	if _, err := c.Do("PING"); err != nil {
+		b.mu.Lock()
+		b.lastFailure = time.Now()
+		b.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 const initedKey = "$inited"
