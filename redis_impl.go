@@ -32,13 +32,10 @@ func newPool(url string, dialOptions []r.DialOption) *r.Pool {
 			c, err = r.DialURL(url, dialOptions...)
 			return
 		},
-		TestOnBorrow: (&borrowTester{idleThreshold: borrowTestIdleThreshold}).test,
+		TestOnBorrow: (&borrowTester{}).test,
 	}
 	return pool
 }
-
-// The pool does not test a connection that was returned to it more recently than this.
-const borrowTestIdleThreshold = time.Minute
 
 var errIdleSinceFailedBorrowTest = errors.New("connection was idle when a borrow test failed")
 
@@ -49,17 +46,16 @@ var errIdleSinceFailedBorrowTest = errors.New("connection was idle when a borrow
 // one read timeout per idle connection. To prevent this, the tester records when a PING fails. It then
 // rejects each connection that was idle since before that failure, and it does not send a PING to it.
 // The pool closes a rejected connection and tries the next one, or dials a new one.
+//
+// A connection that the server closed, for example in a restart, fails its PING at once. The tester then
+// rejects the other connections that were idle since before the failure, even ones that would pass a PING,
+// so the pool dials new connections in their place.
 type borrowTester struct {
-	idleThreshold time.Duration // The tester accepts a connection without a test if it was idle for less than this.
-
 	mu          sync.Mutex
 	lastFailure time.Time
 }
 
 func (b *borrowTester) test(c r.Conn, returnedAt time.Time) error {
-	if time.Since(returnedAt) < b.idleThreshold {
-		return nil
-	}
 	b.mu.Lock()
 	idleSinceFailure := returnedAt.Before(b.lastFailure)
 	b.mu.Unlock()

@@ -40,25 +40,17 @@ func (c *pingConn) DoWithTimeout(time.Duration, string, ...interface{}) (interfa
 	return c.Do("")
 }
 
-func TestBorrowTesterAcceptsRecentlyReturnedConnectionWithoutPing(t *testing.T) {
-	tester := &borrowTester{idleThreshold: time.Minute}
+func TestBorrowTesterSendsPingToIdleConnection(t *testing.T) {
+	tester := &borrowTester{}
 	conn := &pingConn{}
 
 	assert.NoError(t, tester.test(conn, time.Now().Add(-time.Second)))
-	assert.Equal(t, 0, conn.commands)
-}
-
-func TestBorrowTesterSendsPingToIdleConnection(t *testing.T) {
-	tester := &borrowTester{idleThreshold: time.Minute}
-	conn := &pingConn{}
-
-	assert.NoError(t, tester.test(conn, time.Now().Add(-2*time.Minute)))
 	assert.Equal(t, 1, conn.commands)
 }
 
 func TestBorrowTesterRejectsConnectionsIdleSinceFailedPing(t *testing.T) {
-	tester := &borrowTester{idleThreshold: time.Minute}
-	idleSince := time.Now().Add(-2 * time.Minute)
+	tester := &borrowTester{}
+	idleSince := time.Now().Add(-time.Second)
 	pingErr := errors.New("i/o timeout")
 
 	failing := &pingConn{pingErr: pingErr}
@@ -71,16 +63,20 @@ func TestBorrowTesterRejectsConnectionsIdleSinceFailedPing(t *testing.T) {
 
 	// This connection was returned after the PING failed, so it gets a PING as usual.
 	returnedLater := &pingConn{}
-	tester.idleThreshold = 0
 	assert.NoError(t, tester.test(returnedLater, time.Now()))
 	assert.Equal(t, 1, returnedLater.commands)
 }
 
 // stallingServer answers each command with +PONG until stall is set. After that it reads commands
-// and never answers, like a Redis server that has stalled.
+// and never answers, like a Redis server that has stalled. Its restart method closes each connection
+// that it accepted and keeps listening, like a Redis server that restarted.
 type stallingServer struct {
 	listener net.Listener
 	stall    atomic.Bool
+	accepted atomic.Int32
+
+	mu    sync.Mutex
+	conns []net.Conn
 }
 
 func startStallingServer(t *testing.T) *stallingServer {
@@ -98,6 +94,10 @@ func startStallingServer(t *testing.T) *stallingServer {
 			if err != nil {
 				return
 			}
+			s.accepted.Add(1)
+			s.mu.Lock()
+			s.conns = append(s.conns, conn)
+			s.mu.Unlock()
 			conns.Add(1)
 			go func() {
 				defer conns.Done()
@@ -110,6 +110,15 @@ func startStallingServer(t *testing.T) *stallingServer {
 
 func (s *stallingServer) url() string {
 	return "redis://" + s.listener.Addr().String()
+}
+
+func (s *stallingServer) restart() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, conn := range s.conns {
+		_ = conn.Close()
+	}
+	s.conns = nil
 }
 
 func (s *stallingServer) serve(conn net.Conn) {
@@ -161,21 +170,8 @@ func TestPoolBorrowFromStalledServerTakesAtMostTwoReadTimeouts(t *testing.T) {
 
 	server := startStallingServer(t)
 	pool := newPool(server.url(), []r.DialOption{r.DialReadTimeout(readTimeout)})
-	// A threshold of zero makes the tester check every idle connection, as it does for connections that
-	// were idle for longer than the default threshold.
-	pool.TestOnBorrow = (&borrowTester{}).test
 	t.Cleanup(func() { _ = pool.Close() })
-
-	conns := make([]r.Conn, idleConnections)
-	for i := range conns {
-		conns[i] = pool.Get()
-		_, err := conns[i].Do("PING")
-		require.NoError(t, err)
-	}
-	for _, c := range conns {
-		require.NoError(t, c.Close())
-	}
-	require.Equal(t, idleConnections, pool.IdleCount())
+	warmIdleConnections(t, pool, idleConnections)
 
 	server.stall.Store(true)
 	start := time.Now()
@@ -189,4 +185,38 @@ func TestPoolBorrowFromStalledServerTakesAtMostTwoReadTimeouts(t *testing.T) {
 	assert.True(t, netErr.Timeout())
 	// One PING to an idle connection, then one command on a new connection.
 	assert.Less(t, elapsed, 3*readTimeout)
+}
+
+// When the server restarts, the PING to the first idle connection fails at once, and the pool replaces the
+// idle connections before it lends one out. The borrower does not see an error.
+func TestPoolBorrowAfterServerRestartDoesNotFail(t *testing.T) {
+	const idleConnections = 4
+
+	server := startStallingServer(t)
+	pool := newPool(server.url(), []r.DialOption{r.DialReadTimeout(time.Second)})
+	t.Cleanup(func() { _ = pool.Close() })
+	warmIdleConnections(t, pool, idleConnections)
+
+	server.restart()
+	for i := 0; i < idleConnections; i++ {
+		conn := pool.Get()
+		_, err := conn.Do("PING")
+		require.NoError(t, err, "borrow %d", i)
+		require.NoError(t, conn.Close())
+	}
+	assert.Equal(t, int32(idleConnections+1), server.accepted.Load())
+}
+
+// warmIdleConnections leaves n idle connections in the pool.
+func warmIdleConnections(t *testing.T, pool *r.Pool, n int) {
+	conns := make([]r.Conn, n)
+	for i := range conns {
+		conns[i] = pool.Get()
+		_, err := conns[i].Do("PING")
+		require.NoError(t, err)
+	}
+	for _, c := range conns {
+		require.NoError(t, c.Close())
+	}
+	require.Equal(t, n, pool.IdleCount())
 }
