@@ -2,6 +2,13 @@
 
 All notable changes to the LaunchDarkly Go SDK Redis integration will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org).
 
+## [4.0.1](https://github.com/launchdarkly/go-server-sdk-redis-redigo/compare/v4.0.0...v4.0.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* Stop the pool from sending a PING to each idle connection when Redis stalls ([#70](https://github.com/launchdarkly/go-server-sdk-redis-redigo/issues/70)) ([3cbfabd](https://github.com/launchdarkly/go-server-sdk-redis-redigo/commit/3cbfabdffe16e2f6ac250889d4a96f6559b28108))
+
 ## [4.0.0](https://github.com/launchdarkly/go-server-sdk-redis-redigo/compare/v3.0.5...v4.0.0) (2026-10-02)
 
 
