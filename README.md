@@ -12,7 +12,7 @@ For more information, see also: [Using a persistent feature store](https://docs.
 ## Requirements
 
 * Version 6.0.0 or higher of the LaunchDarkly Go SDK. For versions of this library to use with earlier SDK versions, see the changelog.
-* Go 1.24 or higher.
+* Go 1.24 or higher. While this is the minimum, you should use the latest patched version of a supported Go release.
 * Permission to run Lua scripts on the Redis server: the `EVAL` and `EVALSHA` commands, or the `+@scripting` ACL category. The data store needs this to update one flag without losing a concurrent update of another flag. Default Redis and Valkey allow it, as do the major managed offerings.
 
   If your Redis server cannot run scripts, because a command allowlist omits them or a Redis-protocol proxy does not implement them, select `ldredis.UpsertModeWatch` as described in [Concurrent updates](#concurrent-updates). Nothing falls back to that mode on its own: without the permission, every update fails and the SDK reports the store as unavailable.
